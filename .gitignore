@@ -19,3 +19,6 @@ coverage/
 *.log
 public/maplibre-gl-*.mjs
 doctorpv-backup/
+supabase-ca.crt
+*.crt
+.local-pg/
