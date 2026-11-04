@@ -152,6 +152,8 @@ export function buildWorld(center: LatLng): World {
       const ageDays = 360 + Math.floor(rand() * 900);
       const override = SOH_OVERRIDE[id];
       const rate = 0.012 + rand() * 0.018;
+      const aged = 100 - ageDays * rate - rand() * 3;
+      const healthy = aged < 83 ? 83 + rand() * 6 : aged;
       world.batteries.push({
         id,
         index: battIdx,
@@ -161,7 +163,7 @@ export function buildWorld(center: LatLng): World {
         capacityKwh: 10.24,
         nominalV: 51.2,
         ageDays,
-        sohRef: override?.soh ?? Math.max(82, 100 - ageDays * rate - rand() * 3),
+        sohRef: override?.soh ?? healthy,
         sohRatePerDay: override?.rate ?? rate,
         socOffset: (rand() - 0.5) * 8,
         tempOffset: (rand() - 0.5) * 3,

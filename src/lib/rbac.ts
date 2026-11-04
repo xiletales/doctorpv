@@ -48,6 +48,8 @@ const ALL: Role[] = ["dlh", "admin_rt", "koordinator", "teknisi"];
 export const NAV: NavItem[] = [
   { href: "/dashboard", label: "Ringkasan", group: "Pemantauan", icon: "gauge", roles: ALL },
   { href: "/map", label: "Peta Geospasial", group: "Pemantauan", icon: "map", roles: ALL },
+  { href: "/solar", label: "Rumah dan Surya", group: "Pemantauan", icon: "home", roles: ALL },
+  { href: "/batteries", label: "Kesehatan Baterai", group: "Pemantauan", icon: "battery", roles: ALL },
 ];
 
 export function navFor(role: Role): NavItem[] {
