@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { pulseScore } from "../src/lib/ai/pulse";
 import { bandOf, batteryHealth, pvHealth } from "../src/lib/ai/health";
 
 const healthyPv = { performanceRatio: 1, anomalies30d: 0, dataQuality: 1, openFaultWeight: 0, ageYears: 1 };
@@ -43,5 +44,20 @@ describe("health score", () => {
     expect(bandOf(84)).toBe("baik");
     expect(bandOf(69)).toBe("perhatian");
     expect(bandOf(49)).toBe("prioritas");
+  });
+});
+
+describe("cluster pulse score", () => {
+  it("stays within 0 to 100 and worsens with active faults", () => {
+    const health = Array.from({ length: 45 }, () => 95);
+    const statuses = health.map(() => "normal" as const);
+    const clean = pulseScore({ health, statuses, simulatorConnected: true });
+    expect(clean.level).toBe("normal");
+    const faulty = pulseScore({ health, statuses: statuses.map((s, i) => (i < 3 ? ("critical" as const) : s)), simulatorConnected: true });
+    expect(faulty.score).toBeLessThan(clean.score);
+    expect(faulty.level).toBe("critical");
+    expect(faulty.bpm).toBeGreaterThan(clean.bpm);
+    const worst = pulseScore({ health: health.map(() => 0), statuses: statuses.map(() => "critical" as const), simulatorConnected: true });
+    expect(worst.score).toBe(0);
   });
 });

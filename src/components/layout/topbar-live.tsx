@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { clockTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/stores/live";
+import { PulseLine } from "@/components/domain/pulse-score";
 
 export function TopbarLive() {
   const snapshot = useLive((s) => s.snapshot);
@@ -33,7 +34,7 @@ export function TopbarLive() {
         </div>
       ) : null}
       <div className="hidden items-center gap-1.5 px-1.5 text-xs text-ink-2 sm:flex" role="status">
-        <span className={cn("h-2 w-2 rounded-full", live ? "live-dot bg-st-normal" : "bg-st-offline")} aria-hidden />
+        {live ? <PulseLine bpm={72} color="#10B981" className="h-5 w-12" /> : <span className={cn("h-2 w-2 rounded-full bg-st-offline")} aria-hidden />}
         {live ? <span>Langsung, {age} dtk lalu</span> : <span>{snapshot && connected ? "Simulator tidak berjalan" : "Menyambungkan"}</span>}
       </div>
       <Link href="/alerts" className="relative flex h-9 w-9 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2" aria-label={`Alert terbuka: ${snapshot?.openAlerts ?? 0}`}>

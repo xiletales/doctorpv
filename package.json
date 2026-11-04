@@ -1,5 +1,5 @@
 {
-  "name": "doctor-pv",
+  "name": "sunpulse",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -17,7 +17,7 @@
     "simulate": "tsx simulator/index.ts",
     "demo": "tsx scripts/demo.ts",
     "predev": "node scripts/copy-map-worker.mjs",
-    "prebuild": "node scripts/copy-map-worker.mjs",
+    "prebuild": "node scripts/check-terms.mjs && node scripts/copy-map-worker.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

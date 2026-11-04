@@ -31,6 +31,7 @@ export function HealthScoreRing({ score, size = 72, showBand = true }: { score: 
   );
 }
 
+/** className colors the fill only. Put spacing on a wrapper, since a margin here would push the fill out of the track. */
 export function LevelBar({ value, className, label }: { value: number; className?: string; label: string }) {
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2" role="meter" aria-label={label} aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}>

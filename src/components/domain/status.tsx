@@ -98,7 +98,7 @@ export function PageTitle({
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="display text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         {description ? <p className="mt-0.5 max-w-2xl text-sm text-ink-3">{description}</p> : null}
       </div>
       {action}

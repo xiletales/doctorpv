@@ -2,11 +2,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight, BrainCircuit, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import { axisTooltip, EChart, grid, legend, timeAxis, tooltip, useChartTheme, valueAxis } from "@/components/charts/echart";
 import { DisclaimerNote, EmptyState, ErrorState, PriorityBadge, StatusBadge } from "@/components/domain/status";
 import { EnergyFlow, type FlowValues } from "@/components/domain/energy-flow";
 import { SunArc } from "@/components/domain/sun-arc";
+import { PulseScoreRing } from "@/components/domain/pulse-score";
+import { ClusterIsometric } from "@/components/illustrations/cluster-isometric";
+import { pulseScore } from "@/lib/ai/pulse";
+import { hourOfDay } from "@/lib/sim/time";
+import type { TimelineDto, TimelinePoint } from "@/lib/timeline-dto";
+import type { AssetStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, Skeleton } from "@/components/ui/card";
 import { byPriority, type AlertDto } from "@/lib/alerts/dto";
@@ -45,12 +52,12 @@ function Delta({ now, before, unit, goodUp = true }: { now: number; before: numb
   );
 }
 
-function Kpi({ label, value, unit, foot }: { label: string; value: string; unit?: string; foot?: React.ReactNode }) {
+function Kpi({ label, value, unit, foot, glow, big }: { label: string; value: string; unit?: string; foot?: React.ReactNode; glow?: "sun" | "grid" | "battery" | "bad"; big?: boolean }) {
   return (
-    <div className="min-w-0 px-4 py-3">
+    <div className={cn("min-w-0 rounded-3xl border border-line bg-surface px-4 py-3.5", glow && `glow-${glow}`, big && "sm:col-span-2")}>
       <p className="truncate text-xs text-ink-3">{label}</p>
       <p className="mt-1 flex items-baseline gap-1">
-        <span className="num text-xl font-semibold tracking-tight text-ink">{value}</span>
+        <span className={cn("display font-semibold tracking-tight text-ink", big ? "text-4xl" : "text-2xl")}>{value}</span>
         {unit ? <span className="text-xs text-ink-3">{unit}</span> : null}
       </p>
       <div className="mt-0.5 min-h-4 text-[11px] text-ink-3">{foot}</div>
@@ -94,7 +101,7 @@ function BalanceChart({ data }: { data: OverviewDto }) {
       series: [
         { name: "Beban hari ini", type: "line", showSymbol: false, data: data.today.map((p) => [p.ts * 1000, p.load / 1000]), lineStyle: { color: t.load, width: 2.5 }, itemStyle: { color: t.load } },
         { name: "PV hari ini", type: "line", showSymbol: false, data: data.today.map((p) => [p.ts * 1000, p.pv / 1000]), lineStyle: { color: t.pv, width: 2 }, itemStyle: { color: t.pv } },
-        { name: "Beban pola kemarin", type: "line", showSymbol: false, data: pts, lineStyle: { color: t.load, width: 1.5, type: "dashed", opacity: 0.6 }, itemStyle: { color: t.load } },
+        { name: "Pola kemarin", type: "line", showSymbol: false, data: pts, lineStyle: { color: t.load, width: 1.5, type: "dashed", opacity: 0.6 }, itemStyle: { color: t.load } },
       ],
     };
   }, [data, t]);
@@ -134,9 +141,9 @@ function PrChart({ data }: { data: OverviewDto }) {
 function FaultsChart({ data }: { data: OverviewDto }) {
   const t = useChartTheme();
   const option = useMemo(() => {
-    const names = data.faultsByGang.map((g) => g.gangId.replace("G", "Gang "));
+    const names = data.faultsByType.map((g) => g.label);
     const bar = (name: string, key: "critical" | "high" | "medium" | "low", color: string) => ({
-      name, type: "bar", stack: "s", barWidth: 22, data: data.faultsByGang.map((g) => g[key]),
+      name, type: "bar", stack: "s", barWidth: 22, data: data.faultsByType.map((g) => g[key]),
       itemStyle: { color, borderColor: t.surface, borderWidth: 2, borderRadius: 3 },
     });
     return {
@@ -149,30 +156,30 @@ function FaultsChart({ data }: { data: OverviewDto }) {
       series: [bar("Kritis", "critical", t.critical), bar("Tinggi", "high", t.high), bar("Sedang", "medium", t.warning), bar("Rendah", "low", t.low)],
     };
   }, [data, t]);
-  return <EChart option={option} style={{ height: 230 }} ariaLabel="Jumlah alert terbuka per gang menurut prioritas" />;
+  return <EChart option={option} style={{ height: 230 }} ariaLabel="Jumlah alert terbuka per jenis aset menurut prioritas" />;
 }
 
-function GangStrip() {
-  const gangs = useLive((s) => s.snapshot?.gangs);
-  const selected = useUi((s) => s.gangId);
-  const setGang = useUi((s) => s.setGang);
-  if (!gangs) return <Skeleton className="h-24" />;
+function ZoneStrip() {
+  const zones = useLive((s) => s.snapshot?.zones);
+  const selected = useUi((s) => s.zoneId);
+  const setZone = useUi((s) => s.setZone);
+  if (!zones) return <Skeleton className="h-24" />;
   const accent = { normal: "bg-st-normal", warning: "bg-st-warning", critical: "bg-st-critical", offline: "bg-st-offline", maintenance: "bg-st-maintenance" } as const;
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
-      {gangs.map((g) => {
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {zones.map((g) => {
         const active = selected === g.id;
         return (
           <button
             key={g.id}
             type="button"
             aria-pressed={active}
-            onClick={() => setGang(active ? null : g.id)}
-            className={cn("relative overflow-hidden rounded-xl border bg-surface py-3 pl-4 pr-3 text-left transition-colors hover:border-ink-3", active ? "border-primary ring-1 ring-primary" : "border-line")}
+            onClick={() => setZone(active ? null : g.id)}
+            className={cn("relative overflow-hidden rounded-3xl border bg-surface py-3.5 pl-5 pr-4 text-left transition-colors hover:border-ink-3", active ? "border-primary ring-1 ring-primary" : "border-line")}
           >
             <span className={cn("absolute inset-y-0 left-0 w-1", accent[g.status])} aria-hidden />
             <span className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-ink">{g.id.replace("G", "Gang ")}</span>
+              <span className="display text-sm font-semibold text-ink">{g.id.replace("Z", "Zona ")}</span>
               <StatusBadge status={g.status} />
             </span>
             <span className="mt-2 grid grid-cols-3 gap-1 text-xs text-ink-3">
@@ -187,31 +194,100 @@ function GangStrip() {
   );
 }
 
-function Hero() {
+const flowFromPoint = (p: TimelinePoint): FlowValues => ({ pvW: p.pvW, loadW: p.loadW, plnW: p.plnW, chargeW: p.chargeW, dischargeW: p.dischargeW, curtailW: p.curtailW, soc: p.soc });
+
+function Hero({ timeline, index, setIndex }: { timeline?: TimelineDto; index: number | null; setIndex: (i: number | null) => void }) {
   const snapshot = useLive((s) => s.snapshot);
-  const gangId = useUi((s) => s.gangId);
-  const flow = useMemo<FlowValues | null>(() => {
+  const router = useRouter();
+  const [view, setView] = useState<"flow" | "cluster">("flow");
+  const liveFlow = useMemo<FlowValues | null>(() => {
     if (!snapshot) return null;
-    const list = gangId ? snapshot.gangs.filter((g) => g.id === gangId) : snapshot.gangs;
+    const list = snapshot.zones;
     const sum = (f: (g: (typeof list)[number]) => number) => list.reduce((a, g) => a + f(g), 0);
     return { pvW: sum((g) => g.pvW), loadW: sum((g) => g.loadW), plnW: sum((g) => g.plnW), chargeW: sum((g) => g.chargeW), dischargeW: sum((g) => g.dischargeW), curtailW: sum((g) => g.curtailW), soc: sum((g) => g.avgSoc) / Math.max(list.length, 1) };
-  }, [snapshot, gangId]);
-  if (!snapshot || !flow) return <Skeleton className="h-64 rounded-2xl" />;
-  const irr = snapshot.gangs[0]?.irradiance ?? 0;
+  }, [snapshot]);
+  const pulse = useMemo(() => pulseScore({
+    health: [...(snapshot?.pv ?? []), ...(snapshot?.batteries ?? [])].map((a) => a.health),
+    statuses: [...(snapshot?.pv ?? []), ...(snapshot?.batteries ?? [])].map((a) => a.status),
+    simulatorConnected: snapshot?.simulatorConnected ?? false,
+  }), [snapshot]);
+  const statuses = useMemo(() => {
+    const out: Record<string, AssetStatus> = {};
+    for (const p of snapshot?.pv ?? []) out[p.id] = p.status;
+    for (const b of snapshot?.batteries ?? []) out[b.id] = b.status;
+    for (const g of snapshot?.gateways ?? []) out[g.id] = g.online ? "normal" : "offline";
+    return out;
+  }, [snapshot]);
+  const select = useCallback((id: string) => {
+    if (id.startsWith("H")) router.push(`/solar/${id}`);
+    else if (id.startsWith("B")) router.push(`/batteries/${id}`);
+    else router.push("/map");
+  }, [router]);
+
+  if (!snapshot || !liveFlow) return <Skeleton className="h-96 rounded-3xl" />;
+  const point = index !== null ? timeline?.points[index] : undefined;
+  const flow = point ? flowFromPoint(point) : liveFlow;
+  const ts = point?.ts ?? snapshot.simTs;
+  const irr = point?.irradiance ?? snapshot.zones[0]?.irradiance ?? 0;
+  const forecast = Boolean(point && timeline && point.ts > timeline.now);
+  const nowIndex = timeline ? timeline.points.findIndex((p) => p.ts >= timeline.now) : 0;
+
   return (
-    <section className="grid gap-4 overflow-hidden rounded-2xl bg-rail p-5 text-white lg:grid-cols-[1.25fr_1fr] lg:p-6">
-      <div className="flex min-w-0 flex-col justify-between gap-3">
-        <div>
-          <p className="text-sm text-slate-400">Daya surya {gangId ? gangId.replace("G", "Gang ") : "seluruh RT"} pukul {clockTime(snapshot.simTs)} WIB</p>
-          <p className="mt-1 flex items-baseline gap-2">
-            <span className="num text-5xl font-semibold tracking-tight">{num(flow.pvW / 1000, 1)}</span>
-            <span className="text-lg text-slate-300">kW</span>
-          </p>
-          <p className="mt-1 text-sm text-slate-400">Iradiasi {num(irr, 0)} W/m², suhu udara {num(snapshot.gangs[0]?.ambientC ?? 0, 1)} °C</p>
+    <section className="hairline noise relative overflow-hidden rounded-3xl bg-[#0b1220] p-5 text-white lg:p-7">
+      <div className="aurora" aria-hidden />
+      <div className="relative grid gap-6 xl:grid-cols-[1.15fr_1fr]">
+        <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-5">
+            <PulseScoreRing pulse={pulse} />
+            <div className="text-right">
+              <p className="text-sm text-slate-400">Daya surya pukul {clockTime(ts)} WIB</p>
+              <p className="flex items-baseline justify-end gap-1.5">
+                <span className="display text-5xl font-semibold tracking-tight">{num(flow.pvW / 1000, 1)}</span>
+                <span className="text-lg text-slate-300">kW</span>
+              </p>
+              <p className="text-sm text-slate-400">Iradiasi {num(irr, 0)} W/m²</p>
+            </div>
+          </div>
+          <SunArc ts={ts} irradiance={irr} />
         </div>
-        <SunArc ts={snapshot.simTs} irradiance={irr} />
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex justify-end gap-1">
+            {([["flow", "Aliran energi"], ["cluster", "Tampilan klaster"]] as const).map(([k, label]) => (
+              <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} className={cn("rounded-lg px-2.5 py-1 text-xs font-medium transition-colors", view === k ? "bg-white/15 text-white" : "text-slate-400 hover:text-white")}>{label}</button>
+            ))}
+          </div>
+          <div className="flex flex-1 items-center justify-center">
+            {view === "flow" ? <EnergyFlow v={flow} /> : <ClusterIsometric statuses={statuses} hour={hourOfDay(ts)} onSelect={select} className="max-h-80 w-full" />}
+          </div>
+        </div>
       </div>
-      <div className="flex items-center"><EnergyFlow v={flow} /></div>
+
+      <div className="relative mt-5 border-t border-white/10 pt-4">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor="time-travel" className="display text-sm font-semibold">Jelajah waktu</label>
+          {point ? (
+            <span className="flex items-center gap-3 text-xs">
+              <span className={cn("rounded-full px-2 py-0.5 font-medium", forecast ? "bg-indigo-500/25 text-indigo-200" : "bg-white/10 text-slate-200")}>
+                Menampilkan pukul {clockTime(ts)}, {forecast ? "prakiraan model" : "data tercatat"}
+              </span>
+              <button type="button" onClick={() => setIndex(null)} className="font-medium text-amber-300 hover:underline">Kembali ke langsung</button>
+            </span>
+          ) : <span className="text-xs text-slate-400">Geser untuk memutar ulang hari ini atau melihat prakiraan</span>}
+        </div>
+        <input
+          id="time-travel"
+          type="range"
+          min={0}
+          max={Math.max(0, (timeline?.points.length ?? 1) - 1)}
+          step={1}
+          disabled={!timeline}
+          value={index ?? (nowIndex < 0 ? 0 : nowIndex)}
+          aria-valuetext={`Pukul ${clockTime(ts)} WIB`}
+          onChange={(e) => setIndex(Number(e.target.value))}
+          className="time-slider w-full"
+        />
+        <div className="mt-1 flex justify-between text-[11px] text-slate-500" aria-hidden><span>00.00</span><span>06.00</span><span>12.00</span><span>18.00</span><span>24.00</span></div>
+      </div>
     </section>
   );
 }
@@ -253,7 +329,7 @@ function LatestAlerts({ alerts }: { alerts: AlertDto[] }) {
         <li key={a.id} className="flex items-start justify-between gap-3 px-5 py-2.5">
           <div className="min-w-0">
             <p className="text-sm text-ink">{a.message}</p>
-            <p className="text-xs text-ink-3">{dateTime(a.createdAt)}, {a.gangId.replace("G", "Gang ")}</p>
+            <p className="text-xs text-ink-3">{dateTime(a.createdAt)}, {a.zoneId.replace("Z", "Zona ")}</p>
           </div>
           <PriorityBadge priority={a.priority} />
         </li>
@@ -264,8 +340,8 @@ function LatestAlerts({ alerts }: { alerts: AlertDto[] }) {
 
 function LowestPv() {
   const pv = useLive((s) => s.snapshot?.pv);
-  const gangId = useUi((s) => s.gangId);
-  const list = useMemo(() => (pv ?? []).filter((p) => (!gangId || p.gangId === gangId) && p.status !== "offline" && p.status !== "maintenance").sort((a, b) => a.ratio - b.ratio).slice(0, 5), [pv, gangId]);
+  const zoneId = useUi((s) => s.zoneId);
+  const list = useMemo(() => (pv ?? []).filter((p) => (!zoneId || p.zoneId === zoneId) && p.status !== "offline" && p.status !== "maintenance").sort((a, b) => a.ratio - b.ratio).slice(0, 5), [pv, zoneId]);
   return (
     <ul className="divide-y divide-line">
       {list.map((p) => (
@@ -285,8 +361,8 @@ function LowestPv() {
 
 function BatteriesToInspect() {
   const batteries = useLive((s) => s.snapshot?.batteries);
-  const gangId = useUi((s) => s.gangId);
-  const list = useMemo(() => (batteries ?? []).filter((b) => !gangId || b.gangId === gangId).sort((a, b) => a.health - b.health).slice(0, 5), [batteries, gangId]);
+  const zoneId = useUi((s) => s.zoneId);
+  const list = useMemo(() => (batteries ?? []).filter((b) => !zoneId || b.zoneId === zoneId).sort((a, b) => a.health - b.health).slice(0, 5), [batteries, zoneId]);
   return (
     <ul className="divide-y divide-line">
       {list.map((b) => (
@@ -305,54 +381,71 @@ function BatteriesToInspect() {
 }
 
 export function DashboardView() {
-  const gangId = useUi((s) => s.gangId);
-  const setGang = useUi((s) => s.setGang);
+  const zoneId = useUi((s) => s.zoneId);
+  const setZone = useUi((s) => s.setZone);
   const snapshot = useLive((s) => s.snapshot);
   const overview = useQuery({
-    queryKey: ["overview", gangId],
-    queryFn: () => apiGet<OverviewDto>(`/api/v1/overview${gangId ? `?gangId=${gangId}` : ""}`),
+    queryKey: ["overview", zoneId],
+    queryFn: () => apiGet<OverviewDto>(`/api/v1/overview${zoneId ? `?zoneId=${zoneId}` : ""}`),
     refetchInterval: 30_000,
   });
   const alerts = useQuery({
-    queryKey: ["alerts", "active", gangId],
-    queryFn: () => apiGet<{ alerts: AlertDto[] }>(`/api/v1/alerts?active=true${gangId ? `&gangId=${gangId}` : ""}`),
+    queryKey: ["alerts", "active", zoneId],
+    queryFn: () => apiGet<{ alerts: AlertDto[] }>(`/api/v1/alerts?active=true${zoneId ? `&zoneId=${zoneId}` : ""}`),
   });
 
+  const timelineQuery = useQuery({ queryKey: ["timeline"], queryFn: () => apiGet<TimelineDto>("/api/v1/overview/timeline"), staleTime: 300_000 });
+  const [timeIndex, setTimeIndex] = useState<number | null>(null);
+  const timePoint = timeIndex !== null ? timelineQuery.data?.points[timeIndex] : undefined;
+
   const d = overview.data;
+  // While time travelling, cumulative KPIs are recomputed up to the chosen moment.
+  const upTo = useMemo(() => {
+    if (!timePoint || !timelineQuery.data) return null;
+    const rows = timelineQuery.data.points.filter((p) => p.ts <= timePoint.ts);
+    const kwh = (f: (p: TimelinePoint) => number) => (rows.reduce((a, p) => a + f(p), 0) * 300) / 3600 / 1000;
+    return { pv: kwh((p) => p.pvW), load: kwh((p) => p.loadW), pln: kwh((p) => p.plnW) };
+  }, [timePoint, timelineQuery.data]);
+  const pvKwh = upTo?.pv ?? d?.kpi.pvKwh ?? 0;
+  const loadKwh = upTo?.load ?? d?.kpi.loadKwh ?? 0;
+  const plnKwh = upTo?.pln ?? d?.kpi.plnKwh ?? 0;
+  const selfSufficiency = loadKwh > 0 ? 1 - plnKwh / loadKwh : 0;
+  const avoided = Math.max(0, loadKwh - plnKwh);
+  const savings = avoided * 1444.7;
   const liveFaults = alerts.data?.alerts.filter((a) => a.priority !== "low").length ?? d?.kpi.activeFaults ?? 0;
-  const activePv = snapshot ? snapshot.pv.filter((p) => (!gangId || p.gangId === gangId) && p.status !== "offline" && p.inverter !== "TRIP").length : d?.kpi.activePv ?? 0;
+  const activePv = snapshot ? snapshot.pv.filter((p) => (!zoneId || p.zoneId === zoneId) && p.status !== "offline" && p.inverter !== "TRIP").length : d?.kpi.activePv ?? 0;
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <h1 className="sr-only">Ringkasan energi RT</h1>
-      <Hero />
+      <h1 className="sr-only">Dasbor energi klaster</h1>
+      <Hero timeline={timelineQuery.data} index={timeIndex} setIndex={setTimeIndex} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-ink">Status gang</h2>
-        {gangId ? (
-          <Button size="sm" variant="ghost" onClick={() => setGang(null)}>
-            <X className="h-3 w-3" aria-hidden /> Tampilkan seluruh RT
+        <h2 className="display text-[15px] font-semibold text-ink">Zona gateway</h2>
+        {zoneId ? (
+          <Button size="sm" variant="ghost" onClick={() => setZone(null)}>
+            <X className="h-3 w-3" aria-hidden /> Tampilkan seluruh klaster
           </Button>
-        ) : <span className="text-xs text-ink-3">Pilih gang untuk memfilter halaman ini</span>}
+        ) : <span className="text-xs text-ink-3">Pilih zona untuk memfilter grafik dan daftar</span>}
       </div>
-      <GangStrip />
+      <ZoneStrip />
 
       {overview.isError ? (
         <Card><ErrorState message={(overview.error as Error).message} /></Card>
       ) : !d ? (
-        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-24 rounded-3xl" />
       ) : (
-        <Card className="grid grid-cols-2 divide-line sm:grid-cols-3 lg:grid-cols-5 [&>*]:border-line [&>*]:border-b lg:[&>*:nth-last-child(-n+5)]:border-b-0">
-          <Kpi label="Rumah" value={num(d.kpi.houses)} unit="unit" foot={`${d.kpi.gangs} gang`} />
-          <Kpi label="PV aktif" value={num(activePv)} unit={`dari ${d.kpi.houses}`} foot="Instalasi atap" />
-          <Kpi label="Baterai" value={num(d.kpi.batteries)} unit="unit" foot={`SoH rata-rata ${num(d.kpi.avgSoh, 1)}%`} />
-          <Kpi label="Gangguan aktif" value={num(liveFaults)} unit="alert" foot="Tanpa prioritas rendah" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
+          <Kpi big glow="sun" label={timePoint ? `Produksi PV sampai ${clockTime(timePoint.ts)}` : "Produksi PV hari ini"} value={num(pvKwh, 1)} unit="kWh" foot={timePoint ? (timePoint.ts > d.simTs ? "Prakiraan model" : "Data tercatat") : <Delta now={d.kpi.pvKwh} before={d.kpi.pvKwhYesterday} unit="%" />} />
+          <Kpi big glow="battery" label="Kemandirian energi" value={num(selfSufficiency * 100, 1)} unit="%" foot={timePoint ? "Beban dari PV dan baterai" : <Delta now={d.kpi.selfSufficiency * 100} before={d.kpi.selfSufficiencyYesterday * 100} unit="poin" />} />
+          <Kpi glow="grid" label="Konsumsi" value={num(loadKwh, 1)} unit="kWh" foot={timePoint ? `Sampai ${clockTime(timePoint.ts)}` : <Delta now={d.kpi.loadKwh} before={d.kpi.loadKwhYesterday} unit="%" goodUp={false} />} />
+          <Kpi label="Estimasi penghematan" value={rupiah(savings)} foot="Tanpa kredit ekspor" />
+          <Kpi label="Rumah" value={num(d.kpi.houses)} unit="unit" foot="Satu PV per rumah" />
+          <Kpi label="PV aktif" value={num(activePv)} unit={`dari ${d.kpi.houses}`} foot="Berproduksi" />
+          <Kpi glow="battery" label="Baterai" value={num(d.kpi.batteries)} unit="unit" foot={`SoH rata-rata ${num(d.kpi.avgSoh, 1)}%`} />
+          <Kpi glow={liveFaults > 0 ? "bad" : undefined} label="Gangguan aktif" value={num(liveFaults)} unit="alert" foot="Tanpa prioritas rendah" />
           <Kpi label="Perintah kerja terbuka" value={num(d.kpi.openWorkOrders)} unit="WO" foot="Pemeliharaan" />
-          <Kpi label="Produksi PV hari ini" value={num(d.kpi.pvKwh, 1)} unit="kWh" foot={<Delta now={d.kpi.pvKwh} before={d.kpi.pvKwhYesterday} unit="%" />} />
-          <Kpi label="Konsumsi hari ini" value={num(d.kpi.loadKwh, 1)} unit="kWh" foot={<Delta now={d.kpi.loadKwh} before={d.kpi.loadKwhYesterday} unit="%" goodUp={false} />} />
-          <Kpi label="Kemandirian energi" value={num(d.kpi.selfSufficiency * 100, 1)} unit="%" foot={<Delta now={d.kpi.selfSufficiency * 100} before={d.kpi.selfSufficiencyYesterday * 100} unit="poin" />} />
-          <Kpi label="Estimasi penghematan" value={rupiah(d.kpi.savingsRp)} foot="Hari ini, tanpa kredit ekspor" />
-          <Kpi label="Estimasi CO₂ dihindari" value={num(d.kpi.avoidedKg, 0)} unit="kg" foot="Hari ini" />
-        </Card>
+          <Kpi label="Estimasi CO₂ dihindari" value={num(avoided * 0.87, 0)} unit="kg" foot="Faktor 0,87 kg/kWh" />
+        </div>
       )}
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -398,7 +491,7 @@ export function DashboardView() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card>
-          <CardHeader title="Alert terbuka per gang" description="Menurut prioritas" />
+          <CardHeader title="Alert terbuka per jenis aset" description="Menurut prioritas" />
           <div className="px-4 pb-3 pt-2">{d ? <FaultsChart data={d} /> : <Skeleton className="h-[230px]" />}</div>
         </Card>
         <Card className="xl:col-span-2 p-5">

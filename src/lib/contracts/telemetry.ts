@@ -4,7 +4,7 @@ import { z } from "zod";
 const base = {
   deviceId: z.string().min(3).max(40),
   assetId: z.string().min(2).max(20),
-  gatewayId: z.string().regex(/^GW-[1-5]$/),
+  gatewayId: z.string().regex(/^GW-[1-3]$/),
   ts: z.iso.datetime({ offset: true }),
   seq: z.number().int().nonnegative(),
   buffered: z.boolean(),
@@ -59,24 +59,28 @@ export type BatteryMessage = z.infer<typeof batteryMessage>;
 export type MeterMessage = z.infer<typeof meterMessage>;
 
 export const ingestBatch = z.object({
-  gatewayId: z.string().regex(/^GW-[1-5]$/),
+  gatewayId: z.string().regex(/^GW-[1-3]$/),
   messages: z.array(z.unknown()).max(5000),
 });
 
 export const SCENARIOS = [
-  "inverter_h021",
-  "battery_b025_overheat",
+  "inverter_h21",
+  "battery_b08_overheat",
   "gateway_gw3_offline",
   "gateway_gw3_reconnect",
+  "cloudy_day",
+  "fast_forward_30d",
   "reset",
 ] as const;
 export type ScenarioName = (typeof SCENARIOS)[number];
 
 export interface SimDirective {
   clock: { mode: "locked" | "real"; lockAt: string };
-  inverterH021: boolean;
-  batteryB025: boolean;
+  inverterH21: boolean;
+  batteryB08: boolean;
   gw3Offline: boolean;
+  cloudy: boolean;
+  fastForward: boolean;
   /** Assets whose fault a completed work order has physically fixed. */
   repaired: string[];
   /** Increments on reset so the simulator drops its scenario state exactly once. */

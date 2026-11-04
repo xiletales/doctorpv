@@ -7,7 +7,7 @@ import { ApiError, requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import type { HouseDetail } from "@/lib/detail-dto";
 import { live } from "@/lib/live/store";
-import { canSeeOwnerName, inScope } from "@/lib/rbac";
+import { canSeeOwnerName } from "@/lib/rbac";
 import { dayStart, DAY, simNow, wibDay } from "@/lib/sim/time";
 
 export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -15,7 +15,7 @@ export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: stri
   const { id } = await ctx.params;
   await live.init();
   const solar = await prisma.solarSystem.findUnique({ where: { houseId: id }, include: { house: true } });
-  if (!solar || !inScope(user, solar.house.gangId)) throw new ApiError(404, "Rumah tidak ditemukan.");
+  if (!solar) throw new ApiError(404, "Rumah tidak ditemukan.");
 
   const now = simNow(live.clock);
   const today = dayStart(wibDay(now));
@@ -24,7 +24,7 @@ export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: stri
     prisma.weatherReading.findMany({ where: { res: 5, ts: { gte: today, lte: now } }, orderBy: { ts: "asc" } }),
     prisma.solarTelemetry.findMany({ where: { assetId: id, res: 60, ts: { gte: now - 30 * DAY, lte: now } }, orderBy: { ts: "asc" }, select: { ts: true, acPowerW: true } }),
     prisma.weatherReading.findMany({ where: { res: 60, ts: { gte: now - 30 * DAY, lte: now } } }),
-    listAlerts(user, { assetId: id, limit: 20 }),
+    listAlerts({ assetId: id, limit: 20 }),
     prisma.aiPrediction.findMany({ where: { assetId: id, kind: "anomaly" }, orderBy: { createdAt: "desc" } }),
   ]);
 
@@ -34,9 +34,10 @@ export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: stri
 
   const detail: HouseDetail = {
     id,
-    gangId: solar.house.gangId,
+    zoneId: solar.house.zoneId,
+    batteryId: solar.house.batteryId,
     ownerCode: solar.house.ownerCode,
-    ownerName: canSeeOwnerName(user, solar.house.gangId) ? solar.house.ownerName : null,
+    ownerName: canSeeOwnerName(user) ? solar.house.ownerName : null,
     address: solar.house.address,
     lat: solar.lat,
     lng: solar.lng,

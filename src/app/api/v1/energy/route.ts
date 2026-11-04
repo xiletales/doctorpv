@@ -4,8 +4,8 @@ import { prisma } from "@/lib/db";
 import type { EnergyDto, EnergyPoint, EnergyTotals } from "@/lib/energy-dto";
 import { clockTime, num } from "@/lib/format";
 import { live } from "@/lib/live/store";
-import { gangScope } from "@/lib/rbac";
 import { dayStart, DAY, simNow, wibDay } from "@/lib/sim/time";
+import { ZONE_IDS } from "@/lib/sim/world";
 
 const STEP_H = 300 / 3600;
 
@@ -21,11 +21,11 @@ function curve(rows: Row[]): EnergyPoint[] {
 }
 
 /** Rule-based advice from yesterday's full day, with each sentence built from measured values. */
-function recommend(perGang: Map<string, Row[]>): string[] {
+function recommend(perZone: Map<string, Row[]>): string[] {
   const surplus: { weight: number; text: string }[] = [];
   const imports: { weight: number; text: string }[] = [];
-  for (const [id, rows] of perGang) {
-    const name = id.replace("G", "Gang ");
+  for (const [id, rows] of perZone) {
+    const name = id.replace("Z", "Zona ");
     const firstCurtail = rows.find((r) => r.curtailW > 200);
     const t = totals(rows);
     if (firstCurtail && t.curtail > 1) {
@@ -41,31 +41,28 @@ function recommend(perGang: Map<string, Row[]>): string[] {
   return [...top(surplus), ...top(imports)];
 }
 
-export const GET = route(async (req: Request) => {
-  const user = await requireUser();
+/** Whole-cluster only: surplus moves between zones over the cluster bus, so the balance closes at this level. */
+export const GET = route(async () => {
+  await requireUser();
   await live.init();
-  const scope = gangScope(user);
-  const allowed = scope ?? ["G1", "G2", "G3", "G4", "G5"];
-  const param = new URL(req.url).searchParams.get("gangId");
-  const gang = param && allowed.includes(param) ? param : null;
-  const scopeId = gang ?? (scope === null ? "RT" : allowed[0]);
+  const scopeId = "CLUSTER";
   const now = simNow(live.clock);
   const today = dayStart(wibDay(now));
-  const [rowsToday, rowsYesterday, gangRows] = await Promise.all([
+  const [rowsToday, rowsYesterday, zoneRows] = await Promise.all([
     prisma.energyMeterReading.findMany({ where: { scopeId, res: 5, ts: { gte: today, lte: now } }, orderBy: { ts: "asc" } }),
     prisma.energyMeterReading.findMany({ where: { scopeId, res: 5, ts: { gte: today - DAY, lt: today } }, orderBy: { ts: "asc" } }),
-    prisma.energyMeterReading.findMany({ where: { scopeId: { in: gang ? [gang] : allowed }, res: 5, ts: { gte: today - DAY, lt: today } }, orderBy: { ts: "asc" } }),
+    prisma.energyMeterReading.findMany({ where: { scopeId: { in: [...ZONE_IDS] }, res: 5, ts: { gte: today - DAY, lt: today } }, orderBy: { ts: "asc" } }),
   ]);
-  const perGang = new Map<string, Row[]>();
-  for (const r of gangRows) perGang.set(r.scopeId, [...(perGang.get(r.scopeId) ?? []), r]);
+  const perZone = new Map<string, Row[]>();
+  for (const r of zoneRows) perZone.set(r.scopeId, [...(perZone.get(r.scopeId) ?? []), r]);
 
   const dto: EnergyDto = {
-    scopeLabel: gang ? gang.replace("G", "Gang ") : scope === null ? "Seluruh RT" : allowed.map((g) => g.replace("G", "Gang ")).join(", "),
+    scopeLabel: "Seluruh klaster",
     simTs: now,
     dayStart: today,
     today: { totals: totals(rowsToday), curve: curve(rowsToday) },
     yesterday: { totals: totals(rowsYesterday), curve: curve(rowsYesterday) },
-    recommendations: recommend(perGang),
+    recommendations: recommend(perZone),
     tariffRp: Number(process.env.PLN_TARIFF_RP ?? 1444.7),
     emissionFactor: Number(process.env.GRID_EMISSION_FACTOR ?? 0.87),
   };

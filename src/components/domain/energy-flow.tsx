@@ -46,7 +46,7 @@ export interface FlowValues {
   soc: number;
 }
 
-/** Bus-level energy flow on the navy hero surface. Values come from gang meters M1 to M4. */
+/** Bus-level energy flow on the navy hero surface. Values come from meters M1 to M4. */
 export function EnergyFlow({ v }: { v: FlowValues }) {
   const pvToLoad = Math.max(0, v.pvW - v.chargeW - v.curtailW);
   const batteryLabel = v.chargeW > 50 ? `+${kw(v.chargeW)}` : v.dischargeW > 50 ? `−${kw(v.dischargeW)}` : "0,0 kW";

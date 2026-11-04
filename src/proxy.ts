@@ -1,6 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
-import { canOpenPage } from "./lib/rbac";
+import { canOpenPage, homeFor } from "./lib/rbac";
 
 const PUBLIC = ["/login", "/api/auth", "/api/v1/ingest", "/api/v1/sim"];
 
@@ -16,9 +16,9 @@ export async function proxy(req: NextRequest) {
     }
     return NextResponse.redirect(new URL("/login", req.url));
   }
-  if (pathname === "/") return NextResponse.redirect(new URL("/dashboard", req.url));
+  if (pathname === "/") return NextResponse.redirect(new URL(homeFor(token.role), req.url));
   if (!pathname.startsWith("/api/") && !canOpenPage(token.role, pathname)) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.redirect(new URL(homeFor(token.role), req.url));
   }
   return NextResponse.next();
 }

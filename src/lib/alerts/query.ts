@@ -1,23 +1,19 @@
 import type { AnomalyPayload } from "../ai/pipeline";
 import { prisma } from "../db";
-import { gangScope } from "../rbac";
-import type { AlertPriority, AlertStatus, SessionUser } from "../types";
+import type { AlertPriority, AlertStatus } from "../types";
 import type { AlertType } from "./rules";
 
 export type { AlertDto } from "./dto";
 import type { AlertDto } from "./dto";
 
 export async function listAlerts(
-  user: SessionUser,
-  opts: { active?: boolean; gangId?: string | null; assetId?: string | null; limit?: number } = {},
+  opts: { active?: boolean; zoneId?: string | null; assetId?: string | null; limit?: number } = {},
 ): Promise<AlertDto[]> {
-  const scope = gangScope(user);
-  const gangs = opts.gangId ? (scope === null || scope.includes(opts.gangId) ? [opts.gangId] : []) : scope;
   const rows = await prisma.alert.findMany({
     where: {
       ...(opts.active ? { status: { not: "resolved" } } : {}),
       ...(opts.assetId ? { assetId: opts.assetId } : {}),
-      ...(gangs ? { gangId: { in: gangs } } : {}),
+      ...(opts.zoneId ? { zoneId: opts.zoneId } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: opts.limit ?? 200,
@@ -31,7 +27,7 @@ export async function listAlerts(
     id: r.id,
     assetType: r.assetType,
     assetId: r.assetId,
-    gangId: r.gangId,
+    zoneId: r.zoneId,
     type: r.type as AlertType,
     priority: r.priority as AlertPriority,
     message: r.message,

@@ -5,13 +5,23 @@ Setiap gateway mengirim pesan JSON per perangkat, dikirim sebagai batch lewat `P
 ## Topik (gaya MQTT)
 
 ```
-doctorpv/{rtId}/gang/{gangId}/gateway/{gatewayId}/status
-doctorpv/{rtId}/gang/{gangId}/pv/{houseId}/telemetry
-doctorpv/{rtId}/gang/{gangId}/battery/{batteryId}/telemetry
-doctorpv/{rtId}/gang/{gangId}/meter/{meterId}/telemetry
+sunpulse/{clusterId}/gateway/{gatewayId}/status
+sunpulse/{clusterId}/pv/{houseId}/telemetry
+sunpulse/{clusterId}/battery/{batteryId}/telemetry
+sunpulse/{clusterId}/meter/{meterId}/telemetry
 ```
 
-Prototipe mengirim lewat HTTP. Isi pesannya sama, sehingga broker seperti Mosquitto atau EMQX bisa dipasang dengan satu jembatan MQTT ke HTTP yang memanggil endpoint ini.
+Prototipe mengirim lewat HTTP. Isi pesannya sama, sehingga broker seperti Mosquitto atau EMQX, dan perangkat seperti ESP32, bisa dipasang dengan satu jembatan MQTT ke HTTP yang memanggil endpoint ini.
+
+## Cakupan gateway
+
+| Gateway | Zona | Rumah | Baterai |
+|---|---|---|---|
+| GW-1 | A | H01–H10 | B01–B05 |
+| GW-2 | B | H11–H20 | B06–B10 |
+| GW-3 | C | H21–H30 | B11–B15 |
+
+Satu baterai melayani 2 rumah bertetangga: B01 melayani H01 dan H02, B02 melayani H03 dan H04, dan seterusnya.
 
 ## Permintaan
 
@@ -19,13 +29,13 @@ Header `x-gateway-key` berisi kunci per gateway (HMAC-SHA256 dari ID gateway den
 
 ```json
 {
-  "gatewayId": "GW-2",
+  "gatewayId": "GW-3",
   "messages": [
     {
       "type": "pv",
-      "deviceId": "PV-H021-01",
-      "assetId": "H021",
-      "gatewayId": "GW-2",
+      "deviceId": "PV-H21-01",
+      "assetId": "H21",
+      "gatewayId": "GW-3",
       "ts": "2026-11-07T10:15:00+07:00",
       "seq": 18234,
       "buffered": false,
@@ -53,7 +63,7 @@ Jenis `battery` dan `meter` memakai bentuk yang sama. Skema lengkap ada di `src/
 |---|---|---|
 | M1 | Keluaran AC inverter tiap rumah | Produksi PV |
 | M2 | Panel beban tiap rumah | Beban rumah |
-| M3 | Bus gang, bank baterai | Pengisian dan pengosongan |
-| M4 | Bus gang, sambungan PLN | Impor PLN |
+| M3 | Tiap baterai | Pengisian dan pengosongan |
+| M4 | Klaster, sambungan PLN | Impor PLN |
 
-Neraca per gang: `PV + impor PLN + pengosongan = beban + pengisian + curtail`. Rugi-rugi baterai berada di dalam M3. Ekspor tidak dikreditkan, jadi surplus PV yang tidak tertampung tercatat sebagai curtail.
+Neraca klaster: `PV + impor PLN + pengosongan = beban + pengisian + curtail`. Rugi-rugi baterai berada di dalam M3. Ekspor tidak dikreditkan, jadi surplus PV yang tidak tertampung tercatat sebagai curtail. Pengujian di `tests/energy.test.ts` memastikan neraca ini menutup.

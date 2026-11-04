@@ -1,6 +1,6 @@
 "use client";
 import { useMutation } from "@tanstack/react-query";
-import { BatteryWarning, Clock, Lock, Plug, PlugZap, RotateCcw, ServerCrash, ZapOff, type LucideIcon } from "lucide-react";
+import { BatteryWarning, Clock, CloudRain, FastForward, Lock, Plug, PlugZap, RotateCcw, ServerCrash, ZapOff, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -51,15 +51,15 @@ export function DemoPanel({ onNavigate }: { onNavigate?: () => void }) {
         </p>
       ) : null}
 
-      <Scenario icon={ZapOff} title="Gangguan inverter di H021" effect="Output nol pada iradiasi tinggi. Gang 2 menjadi Kritis dalam beberapa detik." active={Boolean(d?.inverterH021)} disabled={disabled} onRun={() => run.mutate("inverter_h021")} runLabel="Picu gangguan" links={[{ href: "/map?asset=H021", label: "Peta" }, { href: "/solar/H021", label: "Detail" }, { href: "/ai", label: "Diagnosis" }]} />
-      <Scenario icon={BatteryWarning} title="Baterai B025 kepanasan" effect="Suhu naik tiap tick. Alert Tinggi di 45 °C, naik menjadi Kritis di 55 °C." active={Boolean(d?.batteryB025)} disabled={disabled} onRun={() => run.mutate("battery_b025_overheat")} runLabel="Picu kepanasan" links={[{ href: "/map?asset=B025", label: "Peta" }, { href: "/batteries/B025", label: "Detail" }, { href: "/ai", label: "Diagnosis" }]} />
+      <Scenario icon={ZapOff} title="Gangguan inverter di H21" effect="Output nol pada iradiasi tinggi. Marker memerah dan Pulse Score turun dalam beberapa detik." active={Boolean(d?.inverterH21)} disabled={disabled} onRun={() => run.mutate("inverter_h21")} runLabel="Picu gangguan" links={[{ href: "/map?asset=H21", label: "Peta" }, { href: "/solar/H21", label: "Detail" }, { href: "/ai", label: "Diagnosis" }]} />
+      <Scenario icon={BatteryWarning} title="Baterai B08 kepanasan" effect="Suhu naik tiap tick. Alert Tinggi di 45 °C, naik menjadi Kritis di 55 °C." active={Boolean(d?.batteryB08)} disabled={disabled} onRun={() => run.mutate("battery_b08_overheat")} runLabel="Picu kepanasan" links={[{ href: "/map?asset=B08", label: "Peta" }, { href: "/batteries/B08", label: "Detail" }, { href: "/ai", label: "Diagnosis" }]} />
 
       <div className={cn("rounded-xl border p-3", d?.gw3Offline ? "border-st-offline bg-st-offline-soft" : "border-line bg-surface")}>
         <div className="flex items-start gap-3">
           {d?.gw3Offline ? <Plug className="mt-0.5 h-5 w-5 shrink-0 text-st-offline" aria-hidden /> : <PlugZap className="mt-0.5 h-5 w-5 shrink-0 text-ink-3" aria-hidden />}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink">Gateway GW-3 terputus</p>
-            <p className="mt-0.5 text-xs text-ink-2">Aset Gang 3 menjadi Offline dan data ditampung di buffer. Saat tersambung kembali, buffer tersinkron sekaligus.</p>
+            <p className="mt-0.5 text-xs text-ink-2">Aset Zona C menjadi Offline, sedangkan zona lain tetap langsung. Data ditampung di buffer. Saat tersambung kembali, buffer tersinkron sekaligus.</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               {d?.gw3Offline ? (
                 <Button size="sm" variant="primary" disabled={disabled} onClick={() => run.mutate("gateway_gw3_reconnect")}>Sambungkan dan sinkronkan</Button>
@@ -70,6 +70,11 @@ export function DemoPanel({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Button variant={d?.cloudy ? "primary" : "secondary"} aria-pressed={Boolean(d?.cloudy)} disabled={disabled} onClick={() => run.mutate("cloudy_day")}><CloudRain className="h-4 w-4" aria-hidden /> {d?.cloudy ? "Kembalikan cerah" : "Hari berawan"}</Button>
+        <Button variant={d?.fastForward ? "primary" : "secondary"} aria-pressed={Boolean(d?.fastForward)} disabled={disabled} onClick={() => run.mutate("fast_forward_30d")}><FastForward className="h-4 w-4" aria-hidden /> {d?.fastForward ? "Batalkan percepatan" : "Percepat degradasi 30 hari"}</Button>
       </div>
 
       <Button className="w-full" variant="secondary" disabled={disabled} onClick={() => run.mutate("reset", { onSuccess: () => toast.dismiss() })}>

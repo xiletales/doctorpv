@@ -6,5 +6,6 @@ import { authOptions } from "@/lib/auth";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
+  if (session.user.role === "warga") redirect("/r");
   return <AppShell user={session.user}>{children}</AppShell>;
 }

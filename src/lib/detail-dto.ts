@@ -11,7 +11,8 @@ export interface AssetAnomaly {
 
 export interface BatteryDetail {
   id: string;
-  gangId: string;
+  zoneId: string;
+  servedHouses: string[];
   chemistry: string;
   capacityKwh: number;
   nominalVoltage: number;
@@ -31,7 +32,8 @@ export interface BatteryDetail {
 
 export interface HouseDetail {
   id: string;
-  gangId: string;
+  zoneId: string;
+  batteryId: string;
   ownerCode: string;
   ownerName: string | null;
   address: string;

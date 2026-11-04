@@ -6,16 +6,15 @@ import { median } from "@/lib/ai/stats";
 import { ApiError, requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { live } from "@/lib/live/store";
-import { inScope } from "@/lib/rbac";
 import { dayStart, DAY, simNow } from "@/lib/sim/time";
 
 /** The signal behind one anomaly, for the chart with its window highlighted. */
 export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
-  const user = await requireUser();
+  await requireUser();
   const { id } = await ctx.params;
   await live.init();
   const row = await prisma.aiPrediction.findUnique({ where: { id } });
-  if (!row || !inScope(user, row.gangId)) throw new ApiError(404, "Anomali tidak ditemukan.");
+  if (!row) throw new ApiError(404, "Anomali tidak ditemukan.");
   const payload = JSON.parse(row.payloadJson) as AnomalyPayload;
   const now = simNow(live.clock);
   const none: AnomalySeries = { kind: "none", label: "", unit: "", points: [], from: payload.from, to: payload.to };
@@ -24,7 +23,7 @@ export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: stri
     const from = now - 30 * DAY;
     const [wx, solar] = await Promise.all([
       prisma.weatherReading.findMany({ where: { res: 60, ts: { gte: from, lte: now } } }),
-      prisma.solarSystem.findMany({ where: { house: { gangId: row.gangId } }, select: { houseId: true, capacityKwp: true, baselinePr: true } }),
+      prisma.solarSystem.findMany({ select: { houseId: true, capacityKwp: true, baselinePr: true } }),
     ]);
     const weather = new Map(wx.map((w) => [w.ts, { ts: w.ts, irradiance: w.irradiance, ambientC: w.ambientC }]));
     const rows = await prisma.solarTelemetry.findMany({ where: { assetId: { in: solar.map((s) => s.houseId) }, res: 60, ts: { gte: from, lte: now } }, select: { assetId: true, ts: true, acPowerW: true } });

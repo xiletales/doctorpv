@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 const run = (cmd: string) => execSync(cmd, { stdio: "inherit" });
 
 run("node scripts/ensure-env.mjs");
-const file = "data/doctorpv.db";
+const file = "data/sunpulse.db";
 if (!existsSync(file)) {
   console.log("Menyiapkan database...");
   run("npm run -s db:setup");
@@ -46,4 +46,4 @@ const stop = () => {
 };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
-console.log("\nDOCTOR PV: http://localhost:3000  (Shift+D membuka kontrol demo)\n");
+console.log("\nSUNPULSE: http://localhost:3000  (Shift+D membuka kontrol demo)\n");

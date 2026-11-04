@@ -7,21 +7,20 @@ import { ApiError, requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import type { BatteryDetail } from "@/lib/detail-dto";
 import { live } from "@/lib/live/store";
-import { inScope } from "@/lib/rbac";
 import { dayStart, DAY, simNow, wibDay } from "@/lib/sim/time";
 
 export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
-  const user = await requireUser();
+  await requireUser();
   const { id } = await ctx.params;
   await live.init();
   const battery = await prisma.battery.findUnique({ where: { id } });
-  if (!battery || !inScope(user, battery.gangId)) throw new ApiError(404, "Baterai tidak ditemukan.");
+  if (!battery) throw new ApiError(404, "Baterai tidak ditemukan.");
 
   const now = simNow(live.clock);
   const [recent, hourly, alerts, preds] = await Promise.all([
     prisma.batteryTelemetry.findMany({ where: { assetId: id, res: 5, ts: { gte: now - 2 * DAY, lte: now } }, orderBy: { ts: "asc" } }),
     prisma.batteryTelemetry.findMany({ where: { assetId: id, res: 60, ts: { gte: now - 31 * DAY, lte: now } }, orderBy: { ts: "asc" } }),
-    listAlerts(user, { assetId: id, limit: 20 }),
+    listAlerts({ assetId: id, limit: 20 }),
     prisma.aiPrediction.findMany({ where: { assetId: id, kind: "anomaly" }, orderBy: { createdAt: "desc" } }),
   ]);
 
@@ -37,11 +36,13 @@ export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: stri
   }
   const days = [...byDay.entries()].sort((a, b) => a[0] - b[0]);
   const sohHistory = days.map(([d, v]) => ({ ts: dayStart(d), soh: median(v.soh) }));
-  const siblings = [...live.batteries.values()].filter((b) => b.gangId === battery.gangId && b.id !== id).map((b) => b.tempC);
+  const siblings = [...live.batteries.values()].filter((b) => b.id !== id).map((b) => b.tempC);
+  const served = await prisma.house.findMany({ where: { batteryId: id }, select: { id: true }, orderBy: { id: "asc" } });
 
   const detail: BatteryDetail = {
     id,
-    gangId: battery.gangId,
+    zoneId: battery.zoneId,
+    servedHouses: served.map((h) => h.id),
     chemistry: battery.chemistry,
     capacityKwh: battery.nominalCapacityKwh,
     nominalVoltage: battery.nominalVoltage,

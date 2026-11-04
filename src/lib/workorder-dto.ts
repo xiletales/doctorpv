@@ -4,7 +4,7 @@ export interface WorkOrderDto {
   id: string;
   assetType: string;
   assetId: string;
-  gangId: string;
+  zoneId: string;
   source: string;
   priority: string;
   status: WorkOrderStatus;
