@@ -1,0 +1,214 @@
+// All timestamps are epoch seconds (Int) so that bulk seeding and range queries stay fast on SQLite.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String     @id
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         String
+  active       Boolean    @default(true)
+  createdAt    Int
+  gangs        UserGang[]
+}
+
+model UserGang {
+  userId String
+  gangId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gang   Gang   @relation(fields: [gangId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gangId])
+}
+
+model Gang {
+  id              String     @id
+  name            String
+  code            String
+  boundaryGeoJson String
+  alleyGeoJson    String
+  users           UserGang[]
+  houses          House[]
+  batteries       Battery[]
+  gateways        Gateway[]
+}
+
+model House {
+  id        String       @id
+  gangId    String
+  ownerCode String
+  ownerName String
+  address   String
+  lat       Float
+  lng       Float
+  gang      Gang         @relation(fields: [gangId], references: [id])
+  solar     SolarSystem?
+}
+
+model SolarSystem {
+  id           String @id
+  houseId      String @unique
+  capacityKwp  Float
+  panelCount   Int
+  inverterModel String
+  tilt         Int
+  azimuth      Int
+  installDate  Int
+  lat          Float
+  lng          Float
+  baselinePr   Float
+  registryStatus String @default("active")
+  house        House  @relation(fields: [houseId], references: [id])
+}
+
+model Battery {
+  id                 String  @id
+  gangId             String
+  chemistry          String
+  nominalCapacityKwh Float
+  nominalVoltage     Float
+  installDate        Int
+  lat                Float
+  lng                Float
+  registryStatus     String  @default("active")
+  gang               Gang    @relation(fields: [gangId], references: [id])
+}
+
+model Gateway {
+  id       String @id
+  gangId   String
+  firmware String
+  lat      Float
+  lng      Float
+  gang     Gang   @relation(fields: [gangId], references: [id])
+}
+
+model SolarTelemetry {
+  assetId   String
+  res       Int
+  ts        Int
+  dcVoltage Float
+  dcCurrent Float
+  acPowerW  Float
+  energyWh  Float
+  panelTempC Float
+  inverter  String
+  quality   Int    @default(0)
+
+  @@id([assetId, res, ts])
+}
+
+model BatteryTelemetry {
+  assetId  String
+  res      Int
+  ts       Int
+  voltage  Float
+  currentA Float
+  soc      Float
+  soh      Float
+  tempC    Float
+  spreadMv Float
+  cycles   Float
+  bms      String
+  quality  Int    @default(0)
+
+  @@id([assetId, res, ts])
+}
+
+model EnergyMeterReading {
+  scopeId    String
+  res        Int
+  ts         Int
+  pvW        Float
+  loadW      Float
+  plnImportW Float
+  chargeW    Float
+  dischargeW Float
+  curtailW   Float
+
+  @@id([scopeId, res, ts])
+}
+
+model WeatherReading {
+  res         Int
+  ts          Int
+  irradiance  Float
+  ambientC    Float
+  cloudCover  Float
+
+  @@id([res, ts])
+}
+
+model AiPrediction {
+  id           String @id
+  assetType    String
+  assetId      String
+  gangId       String
+  kind         String
+  payloadJson  String
+  confidence   Float
+  modelVersion String
+  alertId      String?
+  createdAt    Int
+
+  @@index([kind, createdAt])
+  @@index([assetId])
+  @@index([alertId])
+}
+
+model Alert {
+  id                String  @id
+  assetType         String
+  assetId           String
+  gangId            String
+  type              String
+  priority          String
+  message           String
+  recommendedAction String
+  status            String
+  createdAt         Int
+  acknowledgedBy    String?
+  acknowledgedAt    Int?
+  resolvedAt        Int?
+  workOrderId       String?
+
+  @@index([status, createdAt])
+  @@index([assetId])
+}
+
+model WorkOrder {
+  id        String @id
+  assetType String
+  assetId   String
+  gangId    String
+  source    String
+  priority  String
+  status    String
+  title     String
+  assignee  String?
+  notes     String?
+  createdAt Int
+  completedAt Int?
+}
+
+model AuditLog {
+  id        String @id
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  detail    String
+  createdAt Int
+}
+
+model Setting {
+  key       String @id
+  valueJson String
+}

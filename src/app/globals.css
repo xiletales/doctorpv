@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-grid: var(--grid);
+  --color-sun: var(--sun);
+  --color-st-normal: var(--st-normal);
+  --color-st-warning: var(--st-warning);
+  --color-st-critical: var(--st-critical);
+  --color-st-offline: var(--st-offline);
+  --color-st-maintenance: var(--st-maintenance);
+  --color-st-normal-soft: var(--st-normal-soft);
+  --color-st-warning-soft: var(--st-warning-soft);
+  --color-st-critical-soft: var(--st-critical-soft);
+  --color-st-offline-soft: var(--st-offline-soft);
+  --color-st-maintenance-soft: var(--st-maintenance-soft);
+  --color-rail: #0a1b2e;
+  --color-rail-2: #12293f;
+}
+
+:root {
+  --bg: #f1f5f4;
+  --surface: #ffffff;
+  --surface-2: #f6f9f8;
+  --line: #dde6e3;
+  --ink: #0e1f2d;
+  --ink-2: #41535f;
+  --ink-3: #5f7280;
+  --primary: #047857;
+  --primary-soft: #d9f4e9;
+  --grid: #0369a1;
+  --sun: #b45309;
+  --st-normal: #047857;
+  --st-warning: #a16207;
+  --st-critical: #c81e1e;
+  --st-offline: #5b6b7a;
+  --st-maintenance: #6d3fd1;
+  --st-normal-soft: #dcf5ea;
+  --st-warning-soft: #fdf1c7;
+  --st-critical-soft: #fde4e1;
+  --st-offline-soft: #e6ebef;
+  --st-maintenance-soft: #ece5fb;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0b1220;
+  --surface: #111b2d;
+  --surface-2: #17243a;
+  --line: #233249;
+  --ink: #e8eff6;
+  --ink-2: #aebccc;
+  --ink-3: #8798ab;
+  --primary: #34d399;
+  --primary-soft: #0f3a30;
+  --grid: #38bdf8;
+  --sun: #fbbf24;
+  --st-normal: #34d399;
+  --st-warning: #fbbf24;
+  --st-critical: #f87171;
+  --st-offline: #94a3b8;
+  --st-maintenance: #a78bfa;
+  --st-normal-soft: #0f3a30;
+  --st-warning-soft: #3d2f0a;
+  --st-critical-soft: #451a1a;
+  --st-offline-soft: #243246;
+  --st-maintenance-soft: #2b2352;
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.flow-line {
+  stroke-dasharray: 4 8;
+  animation: flow-dash 1.1s linear infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+.pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+@keyframes live-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: live-dot 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-line,
+  .pulse-ring,
+  .live-dot {
+    animation: none;
+  }
+}
+
+.maplibregl-popup-content {
+  color: #0e1f2d;
+}
