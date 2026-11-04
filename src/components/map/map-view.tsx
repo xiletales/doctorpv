@@ -20,6 +20,7 @@ import type { BatteryLive, GatewayLive, PvLive } from "@/lib/live/store";
 import type { MapBattery, MapData, MapGateway, MapHouse } from "@/lib/map-dto";
 import { NAV } from "@/lib/rbac";
 import { facilityOf } from "@/lib/site";
+import { VERDICT_LABEL } from "@/lib/ai/assess";
 import { STATUS_LABEL, type AssetStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/stores/live";
@@ -111,10 +112,27 @@ function DrawerShell({ title, subtitle, status, onClose, children, href }: { tit
   );
 }
 
+/** Says plainly whether low output is the weather or something at this panel. */
+function VerdictNote({ live }: { live: PvLive }) {
+  const weather = useLive((st) => st.snapshot?.weather);
+  const tone = live.verdict === "gangguan" ? "bg-st-warning-soft" : live.verdict === "sensor" ? "bg-st-maintenance-soft" : "bg-surface-2";
+  return (
+    <section className={cn("rounded-xl p-3 text-sm", tone)}>
+      <p className="font-medium text-ink">{VERDICT_LABEL[live.verdict]}</p>
+      <p className="mt-0.5 text-xs text-ink-2">
+        {live.verdict === "cuaca" ? "Produksi rendah karena mendung, bukan kerusakan. " : ""}
+        Aktual {num(live.ratio * 100, 0)}% dari ekspektasi pada iradiasi {num(live.irradiance, 0)} W/m² ({live.irradianceSource === "sensor" ? "sensor titik ini" : "referensi cuaca"}).
+      </p>
+      <p className="mt-1 text-xs text-ink-3">{weather?.label ?? "Cuaca"}. Estimasi, perlu verifikasi teknisi.</p>
+    </section>
+  );
+}
+
 function HouseDrawer({ house, live, onClose }: { house: MapHouse; live?: PvLive; onClose: () => void }) {
   return (
     <DrawerShell title={house.id} subtitle={`${areaLabel(house.zoneId)}, ${house.address}`} status={live?.status ?? "offline"} onClose={onClose} href={`/solar/${house.id}`}>
       <HealthScoreRing score={live?.health ?? 0} />
+      {live ? <VerdictNote live={live} /> : null}
       <dl className="divide-y divide-line">
         <Row label="Daya saat ini" value={<span className="num">{num((live?.acW ?? 0) / 1000, 2)} kW</span>} />
         <Row label="Energi hari ini" value={<span className="num">{num(live?.todayKwh, 1)} kWh</span>} />

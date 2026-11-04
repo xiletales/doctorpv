@@ -78,7 +78,7 @@ function CreateOrder({ a }: { a: AlertDto }) {
     onError: (e: Error) => toast.error(e.message),
   });
   if (a.workOrderId) return <Link href="/maintenance" className="inline-flex h-8 items-center text-xs font-medium text-primary hover:underline">Lihat perintah kerja</Link>;
-  if (!can(user.role, "workorders:create") || a.assetType === "gateway") return null;
+  if (!can(user.role, "workorders:create") || a.assetType === "gateway" || a.assetType === "cluster") return null;
   return <Button size="sm" disabled={create.isPending} onClick={() => create.mutate()}><ClipboardPlus className="h-3.5 w-3.5" aria-hidden /> Buat perintah kerja</Button>;
 }
 
@@ -120,7 +120,7 @@ function AlertRow({ a, onChange, busy }: { a: AlertDto; onChange: (id: string, s
             <p className="mt-1 text-sm text-ink">{a.recommendedAction}</p>
             <div className="mt-3 flex flex-wrap gap-3 text-sm">
               {href ? <Link href={href} className="font-medium text-primary hover:underline">Buka detail aset</Link> : null}
-              {a.assetType !== "gateway" ? <Link href={`/map?asset=${a.assetId}`} className="font-medium text-primary hover:underline">Lihat di peta</Link> : null}
+              {a.assetType !== "gateway" && a.assetType !== "cluster" ? <Link href={`/map?asset=${a.assetId}`} className="font-medium text-primary hover:underline">Lihat di peta</Link> : null}
               <Link href="/ai" className="font-medium text-primary hover:underline">Buka diagnosis AI</Link>
             </div>
           </div>

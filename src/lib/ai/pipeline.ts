@@ -32,7 +32,7 @@ export interface PvContext {
 export function pvFeatures(
   ctx: PvContext,
   at: number,
-  live?: { acW: number; dcV: number; dcI: number; inverter: string; irradiance: number; ambientC: number; peerRatio: number },
+  live?: { acW: number; dcV: number; dcI: number; inverter: string; irradiance: number; ambientC: number; peerRatio: number; clearFraction?: number; sensorProblem?: string | null },
 ): PvFeatures {
   const rows = ctx.rows.filter((r) => r.ts <= at);
   const days = withPeers(dailyRatios(rows, ctx.weather, ctx.capacityKwp, ctx.baselinePr), ctx.peersByDay);
@@ -71,6 +71,8 @@ export function pvFeatures(
     daysDegraded: daysDegraded(days),
     recurringHours: recurringLowHours(recent, ctx.weather, ctx.capacityKwp, ctx.baselinePr),
     abrupt: yesterday ? yesterday.ratio > 0.85 * yesterday.peerRatio : true,
+    clearFraction: sample.clearFraction ?? 1,
+    sensorProblem: sample.sensorProblem ?? null,
   };
 }
 
@@ -86,6 +88,7 @@ const PV_TITLE: Record<Anomaly["pattern"], string> = {
   thermal: "Suhu baterai naik tidak wajar",
   imbalance: "Tegangan antarsel tidak seimbang",
   aging: "SoH di bawah ambang akhir masa pakai",
+  weather: "Produksi rendah karena cuaca, bukan kerusakan",
 };
 
 export const anomalyTitle = (pattern: Anomaly["pattern"]): string => PV_TITLE[pattern];

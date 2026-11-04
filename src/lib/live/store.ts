@@ -6,8 +6,15 @@ import type { HourlyWeather } from "../ai/features";
 import { dailyRatios } from "../ai/features";
 import { expectedPowerW } from "../ai/expected";
 import { median } from "../ai/stats";
-import { evaluateBattery, evaluatePv, type AlertType, type Condition } from "../alerts/rules";
-import { telemetryMessage, type ScenarioName, type SimDirective, type TelemetryMessage } from "../contracts/telemetry";
+import { evaluateBattery, evaluateIrradianceSensor, evaluatePv, evaluateWeather, type AlertType, type Condition } from "../alerts/rules";
+import { assessPoints, verdictFor, type IrradianceSource, type PointVerdict } from "../ai/assess";
+import { diagnoseClusterWeather } from "../ai/rca";
+import { clearSky } from "../sim/physics";
+import { SITE } from "../site";
+import { OpenMeteoProvider } from "../weather/open-meteo";
+import { SimulatedWeatherProvider } from "../weather/simulated";
+import type { WeatherProvider, WeatherReading } from "../weather/types";
+import { CLOUD_FACTOR, telemetryMessage, type ScenarioName, type SimDirective, type TelemetryMessage } from "../contracts/telemetry";
 import { dayStart, DAY, defaultClock, simNow, wibDay, type ClockConfig } from "../sim/time";
 import type { AlertPriority, AssetStatus } from "../types";
 import { areaLabel } from "@/lib/site";
@@ -27,6 +34,10 @@ export interface PvLive {
   capacityKwp: number;
   status: AssetStatus;
   health: number;
+  /** The irradiance used for this point's expectation, and where it came from. */
+  irradiance: number;
+  irradianceSource: IrradianceSource;
+  verdict: PointVerdict;
 }
 
 export interface BatteryLive {
@@ -82,12 +93,14 @@ export interface LiveSnapshot {
   zones: ZoneLive[];
   gateways: GatewayLive[];
   openAlerts: number;
+  /** What the telemetry is being judged against right now. */
+  weather: { label: string; irradiance: number; clearFraction: number; cloudCover: number };
   directive: SimDirective;
   quality: { accepted: number; rejected: number; duplicates: number; buffered: number };
 }
 
 export interface AlertEvent {
-  kind: "new" | "upgraded" | "resolved" | "sync" | "reset";
+  kind: "new" | "upgraded" | "resolved" | "sync" | "reset" | "refreshed";
   id?: string;
   assetId?: string;
   zoneId?: string;
@@ -126,7 +139,7 @@ const parseTs = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
 class LiveStore {
   clock: ClockConfig = defaultClock();
-  directive: SimDirective = { clock: this.clock, inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, fastForward: false, repaired: [], resetEpoch: 0 };
+  directive: SimDirective = { clock: this.clock, inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, cloudySoiled: false, fastForward: false, repaired: [], resetEpoch: 0 };
   pv = new Map<string, PvLive>();
   batteries = new Map<string, BatteryLive>();
   zones = new Map<string, ZoneLive>();
@@ -151,6 +164,22 @@ class LiveStore {
   /** Alerts a person closed while the condition still holds. They stay closed until it clears. */
   private suppressed = new Set<string>();
   private offlineSince = new Map<string, number>();
+  private sensorValues = new Map<string, number | null>();
+  private sensorStuck = new Map<string, number>();
+  private sensorProblems = new Map<string, string | null>();
+  private peerRatioNow = 1;
+  private clearFraction = 1;
+  private reference: WeatherReading | null = null;
+  private refreshDiagnoses = false;
+  /** Simulated telemetry is judged against the simulated sky. WEATHER_REFERENCE=open-meteo is for real sensors. */
+  private simulated = new SimulatedWeatherProvider(() => (this.directive.cloudy ? CLOUD_FACTOR : null));
+  private openMeteo = new OpenMeteoProvider(
+    Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? SITE.center.lat),
+    Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? SITE.center.lng),
+  );
+  private get provider(): WeatherProvider {
+    return process.env.WEATHER_REFERENCE === "open-meteo" ? this.openMeteo : this.simulated;
+  }
   quality = { accepted: 0, rejected: 0, duplicates: 0, buffered: 0 };
   quarantine: { at: number; reason: string }[] = [];
 
@@ -213,7 +242,7 @@ class LiveStore {
         id, zoneId: s.house.zoneId, acW: row?.acPowerW ?? 0, dcV: row?.dcVoltage ?? 0, dcI: row?.dcCurrent ?? 0,
         tempC: row?.panelTempC ?? amb, inverter: row?.inverter ?? "IDLE", rssi: -70, expectedW,
         ratio: expectedW > 0 ? (row?.acPowerW ?? 0) / expectedW : 1, todayKwh: eToday.get(id) ?? 0,
-        capacityKwp: s.capacityKwp, status: "normal", health: 0,
+        capacityKwp: s.capacityKwp, status: "normal", health: 0, irradiance: g, irradianceSource: "sensor", verdict: "normal",
       });
     }
     for (const b of batts) {
@@ -304,7 +333,11 @@ class LiveStore {
         this.emitAlert({ kind: "sync", assetId: gatewayId, zoneId: gw.zoneId, count: bufferedCount, message: `${gatewayId} tersambung kembali. ${bufferedCount} pesan dari buffer tersinkron.` });
       }
       if (wasOffline) await this.resolve(`${gatewayId}:gateway_offline`);
-      await this.evaluateGang(gw.zoneId);
+      await this.refreshReference();
+      this.assess();
+      await this.evaluateZone(gw.zoneId);
+      await this.evaluateCluster();
+      if (this.refreshDiagnoses && gatewayId === "GW-3") await this.refreshOpenDiagnoses();
     }
     // Not awaited, so that a slow network write cannot delay ticks and make gateways look offline.
     if (toPersist.length) void this.persist(toPersist).catch((e) => console.error("[live] persist", e));
@@ -319,15 +352,14 @@ class LiveStore {
       const p = this.pv.get(msg.assetId);
       if (!p) return;
       const m = msg.metrics;
-      const zone = this.zones.get(p.zoneId);
-      const meta = this.meta.get(p.id);
       const prevW = p.acW;
       p.acW = m.acPowerW; p.dcV = m.dcVoltage; p.dcI = m.dcCurrent; p.tempC = m.panelTempC;
       p.inverter = msg.status.inverter; p.rssi = msg.status.rssi;
-      if (zone && meta) {
-        p.expectedW = expectedPowerW(meta.capacityKwp, zone.irradiance, zone.ambientC, meta.baselinePr);
-        p.ratio = p.expectedW > 1 ? m.acPowerW / p.expectedW : 1;
-      }
+      const previous = this.sensorValues.get(p.id);
+      this.sensorStuck.set(p.id, previous !== undefined && previous === m.irradiance ? (this.sensorStuck.get(p.id) ?? 0) + 1 : 0);
+      this.sensorValues.set(p.id, m.irradiance);
+      // A device only comes back once it was repaired, so a late tick around a reset cannot clear the alert.
+      if (this.directive.repaired.includes(p.id) && this.open.has(`${p.id}:device_offline`)) void this.resolve(`${p.id}:device_offline`);
       if (this.clock.mode === "real") p.todayKwh += ((prevW + m.acPowerW) / 2) * (2 / 3600) / 1000;
       this.pushRing(p.id, nowReal, m.acPowerW, p.expectedW);
     } else if (msg.type === "battery") {
@@ -353,19 +385,93 @@ class LiveStore {
     this.rings.set(id, ring);
   }
 
-  private async evaluateGang(zoneId: string) {
-    const zone = this.zones.get(zoneId);
-    if (!zone) return;
+  private async refreshReference() {
+    const now = simNow(this.clock);
+    const provided = await this.provider.current(now);
+    // A failed outside provider falls back quietly to the simulated reference.
+    this.reference = provided ?? (await this.simulated.current(now));
+  }
+
+  /** Recomputes every point's expectation from the shared, tested logic in ai/assess. */
+  private assess() {
+    const reference = this.reference?.irradiance ?? 0;
+    const inputs = [...this.pv.values()].filter((p) => !this.isDeviceOffline(p.id) && this.sensorValues.has(p.id)).map((p) => {
+      const meta = this.meta.get(p.id);
+      return {
+        id: p.id, acW: p.acW, panelTempC: p.tempC, capacityKwp: p.capacityKwp, baselinePr: meta?.baselinePr ?? 0.78,
+        sensorIrradiance: this.sensorValues.get(p.id) ?? null, sensorStuckTicks: this.sensorStuck.get(p.id) ?? 0,
+      };
+    });
+    const { points, peerRatio } = assessPoints(inputs, reference);
+    this.peerRatioNow = peerRatio;
+    const clear = clearSky(simNow(this.clock));
+    this.clearFraction = clear > 20 ? Math.min(1, reference / clear) : 1;
+    for (const a of points) {
+      const p = this.pv.get(a.id);
+      if (!p) continue;
+      p.expectedW = a.expectedW; p.ratio = a.ratio; p.irradiance = a.irradiance; p.irradianceSource = a.source;
+      this.sensorProblems.set(a.id, a.sensorProblem);
+      const hasFault = this.open.has(`${a.id}:inverter_trip`) || this.open.has(`${a.id}:production_drop`);
+      p.verdict = verdictFor(a, this.clearFraction, hasFault, this.open.has(`${a.id}:sensor_suspect`));
+    }
+    for (const r of [...this.pv.keys()]) {
+      if (this.isDeviceOffline(r)) (this.pv.get(r) as PvLive).verdict = "sensor";
+    }
+  }
+
+  private async evaluateZone(zoneId: string) {
     for (const p of this.pv.values()) {
       if (p.zoneId !== zoneId || this.isDeviceOffline(p.id)) continue;
-      const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: p.ratio }, zone.irradiance);
+      const problem = this.sensorProblems.get(p.id) ?? null;
+      const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: p.ratio }, p.irradiance, this.peerRatioNow);
       if (conds === null) continue;
-      await this.sync(p.id, "pv", zoneId, conds, PV_TYPES);
+      const sensor = evaluateIrradianceSensor(p.id, problem);
+      const list = sensor && !conds.some((c) => c.type === "sensor_suspect") ? [...conds, sensor] : conds;
+      await this.sync(p.id, "pv", zoneId, list, PV_TYPES);
     }
     for (const b of this.batteries.values()) {
       if (b.zoneId !== zoneId) continue;
       await this.sync(b.id, "battery", zoneId, evaluateBattery(b), BATT_TYPES);
     }
+  }
+
+  private clearSkyOutputW(p: PvLive): number {
+    const meta = this.meta.get(p.id);
+    const clear = clearSky(simNow(this.clock));
+    return expectedPowerW(p.capacityKwp, clear, this.reference?.ambientC ?? 28, meta?.baselinePr ?? 0.78);
+  }
+
+  /** One low-priority notice for the whole cluster, rather than 30 per-point alerts. */
+  private async evaluateCluster() {
+    const list = [...this.pv.values()].filter((p) => !this.isDeviceOffline(p.id) && this.sensorValues.has(p.id));
+    if (list.length === 0) return;
+    const clearSkyW = list.reduce((a, p) => a + this.clearSkyOutputW(p), 0);
+    const lowCount = list.filter((p) => p.acW < 0.7 * this.clearSkyOutputW(p)).length;
+    const cond = evaluateWeather({ clearFraction: this.clearFraction, clearSkyW, medianRatio: this.peerRatioNow, lowShare: lowCount / list.length });
+    await this.sync("KLASTER", "cluster", "CLUSTER", cond ? [cond] : [], ["weather_info"]);
+  }
+
+  private async refreshOpenDiagnoses() {
+    this.refreshDiagnoses = false;
+    for (const a of this.open.values()) {
+      if (!PV_TYPES.includes(a.type)) continue;
+      const fresh = await this.diagnosePvLive(a.assetId);
+      const pred = await prisma.aiPrediction.findFirst({ where: { alertId: a.id } });
+      if (!fresh || !pred) continue;
+      const payload = JSON.parse(pred.payloadJson) as AnomalyPayload;
+      payload.diagnosis = fresh;
+      await prisma.aiPrediction.update({ where: { id: pred.id }, data: { payloadJson: JSON.stringify(payload), confidence: fresh.confidence } });
+    }
+    this.emitAlert({ kind: "refreshed" });
+  }
+
+  async weatherStatus(now: number) {
+    const used = await this.provider.current(now);
+    const real = await this.openMeteo.current(Math.floor(Date.now() / 1000));
+    return {
+      used: { label: this.provider.label, reading: used },
+      real: { label: this.openMeteo.label, reading: real },
+    };
   }
 
   /** Raises after 2 consecutive evaluations, and clears after 3 so that noise cannot flap an alert. */
@@ -456,6 +562,18 @@ class LiveStore {
   private async diagnosisFor(a: OpenAlert) {
     if (a.assetType === "pv") return this.diagnosePvLive(a.assetId);
     if (a.assetType === "battery") return this.diagnoseBatteryLive(a.assetId);
+    if (a.assetType === "cluster") {
+      const list = [...this.pv.values()].filter((p) => !this.isDeviceOffline(p.id));
+      return diagnoseClusterWeather({
+        clearFraction: this.clearFraction,
+        medianRatio: this.peerRatioNow,
+        lowCount: list.filter((p) => p.acW < 0.7 * this.clearSkyOutputW(p)).length,
+        total: list.length,
+        sensorIrradiance: median(list.map((p) => p.irradiance)),
+        referenceIrradiance: this.reference?.irradiance ?? 0,
+        referenceLabel: this.provider.label,
+      });
+    }
     return null;
   }
 
@@ -467,11 +585,12 @@ class LiveStore {
       : a.type === "soh_degradation" ? "aging"
       : a.type === "sensor_suspect" ? "sensor"
       : a.type === "inverter_trip" ? "sudden_zero"
+      : a.type === "weather_info" ? "weather"
       : "partial";
     const live = this.pv.get(a.assetId);
     const payload: AnomalyPayload = {
-      metric: a.assetType === "pv" ? "acPowerW" : a.type === "battery_temp" ? "tempC" : "connection",
-      methods: a.assetType === "pv" ? ["residual", "peer"] : a.type === "gateway_offline" ? ["threshold"] : ["threshold", "peer"],
+      metric: a.assetType === "pv" ? "acPowerW" : a.type === "battery_temp" ? "tempC" : a.assetType === "cluster" ? "irradiance" : "connection",
+      methods: a.assetType === "pv" || a.assetType === "cluster" ? ["residual", "peer"] : a.type === "gateway_offline" ? ["threshold"] : ["threshold", "peer"],
       from: at,
       to: at,
       deviationPct: live ? (live.ratio - 1) * 100 : 0,
@@ -512,7 +631,7 @@ class LiveStore {
     const f = pvFeatures(
       { capacityKwp: meta.capacityKwp, baselinePr: meta.baselinePr, rows: hourly, weather, peersByDay: await peers(weather) },
       now,
-      { acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, irradiance: zone.irradiance, ambientC: zone.ambientC, peerRatio: this.peerRatio(id) },
+      { acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, irradiance: zone.irradiance, ambientC: zone.ambientC, peerRatio: this.peerRatio(id), clearFraction: this.clearFraction, sensorProblem: this.sensorProblems.get(id) ?? null },
     );
     return runPvDiagnosis(f);
   }
@@ -636,8 +755,7 @@ class LiveStore {
     for (const p of this.pv.values()) {
       const meta = this.meta.get(p.id);
       p.status = toStatus(p.id, p.zoneId, meta?.maintenance);
-      const zone = this.zones.get(p.zoneId);
-      const judged = (zone?.irradiance ?? 0) >= 150;
+      const judged = p.irradiance >= 150;
       const h = pvHealth({
         performanceRatio: judged ? p.ratio : 0.95,
         anomalies30d: this.anomalies.get(p.id) ?? 0,
@@ -678,7 +796,13 @@ class LiveStore {
       batteries: [...this.batteries.values()],
       zones: [...this.zones.values()],
       gateways: [...this.gateways.values()],
-      openAlerts: this.open.size,
+      openAlerts: [...this.open.values()].filter((a) => a.type !== "weather_info").length,
+      weather: {
+        label: this.provider.label,
+        irradiance: this.reference?.irradiance ?? [...this.zones.values()][0]?.irradiance ?? 0,
+        clearFraction: this.clearFraction,
+        cloudCover: this.reference?.cloudCover ?? 0,
+      },
       directive: this.directive,
       quality: this.quality,
     };
@@ -761,7 +885,10 @@ class LiveStore {
       await this.init();
       if (name === "inverter_h21") this.directive = { ...this.directive, inverterH21: true, repaired: this.directive.repaired.filter((a) => a !== "H21") };
       if (name === "battery_b08_overheat") this.directive = { ...this.directive, batteryB08: true };
-      if (name === "cloudy_day") this.directive = { ...this.directive, cloudy: !this.directive.cloudy };
+      // Both cloud scenarios clear other faults first, so that the weather-versus-fault story stands alone.
+      if (name === "cloudy_day") this.directive = { ...this.directive, cloudy: true, cloudySoiled: false, repaired: [...new Set([...this.directive.repaired, "H07", "H13", "B11", "H26"])] };
+      if (name === "cloudy_soiled") this.directive = { ...this.directive, cloudy: true, cloudySoiled: true, repaired: [...new Set([...this.directive.repaired, "H13", "B11", "H26"])].filter((a) => a !== "H07") };
+      if (name === "cloudy_day" || name === "cloudy_soiled") this.refreshDiagnoses = true;
       if (name === "fast_forward_30d") this.directive = { ...this.directive, fastForward: !this.directive.fastForward };
       if (name === "gateway_gw3_offline") this.directive = { ...this.directive, gw3Offline: true };
       if (name === "gateway_gw3_reconnect") this.directive = { ...this.directive, gw3Offline: false };
@@ -771,7 +898,7 @@ class LiveStore {
   }
 
   private async reset() {
-    this.directive = { clock: this.clock, inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, fastForward: false, repaired: [], resetEpoch: this.directive.resetEpoch + 1 };
+    this.directive = { clock: this.clock, inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, cloudySoiled: false, fastForward: false, repaired: [], resetEpoch: this.directive.resetEpoch + 1 };
     await prisma.aiPrediction.deleteMany({ where: { id: { startsWith: "ANM-LIVE-" } } });
     await prisma.alert.deleteMany({ where: { id: { startsWith: "LIVE-" } } });
     await prisma.workOrder.deleteMany({});
@@ -783,6 +910,9 @@ class LiveStore {
     this.clears.clear();
     this.rings.clear();
     this.suppressed.clear();
+    this.sensorValues.clear();
+    this.sensorStuck.clear();
+    this.sensorProblems.clear();
     for (const g of this.gateways.values()) {
       g.online = true;
       g.bufferEstimate = 0;
@@ -791,6 +921,7 @@ class LiveStore {
     this.offlineSince.clear();
     this.ready = null;
     await this.init();
+    this.refreshDiagnoses = true;
     for (const s of this.subs) s.send("alert", { kind: "reset" } satisfies AlertEvent);
   }
 }

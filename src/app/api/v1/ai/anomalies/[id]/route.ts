@@ -3,7 +3,7 @@ import type { AnomalySeries } from "@/lib/ai/dto";
 import { dailyRatios } from "@/lib/ai/features";
 import type { AnomalyPayload } from "@/lib/ai/pipeline";
 import { median } from "@/lib/ai/stats";
-import { ApiError, requireUser, route } from "@/lib/api";
+import { requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { live } from "@/lib/live/store";
 import { dayStart, DAY, simNow } from "@/lib/sim/time";
@@ -14,7 +14,8 @@ export const GET = route(async (_req: Request, ctx: { params: Promise<{ id: stri
   const { id } = await ctx.params;
   await live.init();
   const row = await prisma.aiPrediction.findUnique({ where: { id } });
-  if (!row) throw new ApiError(404, "Anomali tidak ditemukan.");
+  // A reset can delete the anomaly a chart is still polling. An empty series is the correct answer then.
+  if (!row) return NextResponse.json({ kind: "none", label: "", unit: "", points: [], from: 0, to: 0 } satisfies AnomalySeries);
   const payload = JSON.parse(row.payloadJson) as AnomalyPayload;
   const now = simNow(live.clock);
   const none: AnomalySeries = { kind: "none", label: "", unit: "", points: [], from: payload.from, to: payload.to };

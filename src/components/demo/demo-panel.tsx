@@ -72,10 +72,17 @@ export function DemoPanel({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Button variant={d?.cloudy ? "primary" : "secondary"} aria-pressed={Boolean(d?.cloudy)} disabled={disabled} onClick={() => run.mutate("cloudy_day")}><CloudRain className="h-4 w-4" aria-hidden /> {d?.cloudy ? "Kembalikan cerah" : "Hari berawan"}</Button>
-        <Button variant={d?.fastForward ? "primary" : "secondary"} aria-pressed={Boolean(d?.fastForward)} disabled={disabled} onClick={() => run.mutate("fast_forward_30d")}><FastForward className="h-4 w-4" aria-hidden /> {d?.fastForward ? "Batalkan percepatan" : "Percepat degradasi 30 hari"}</Button>
+      <div className="rounded-xl border border-line bg-surface p-3">
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-ink"><CloudRain className="h-4 w-4 text-ink-3" aria-hidden /> Cuaca atau kerusakan?</p>
+        <p className="mt-0.5 text-xs text-ink-2">Kedua skenario membersihkan gangguan lain lebih dulu agar perbandingannya jelas.</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <Button size="sm" variant={d?.cloudy && !d.cloudySoiled ? "primary" : "secondary"} aria-pressed={Boolean(d?.cloudy && !d.cloudySoiled)} disabled={disabled} onClick={() => run.mutate("cloudy_day")}>Hari berawan</Button>
+          <Button size="sm" variant={d?.cloudySoiled ? "primary" : "secondary"} aria-pressed={Boolean(d?.cloudySoiled)} disabled={disabled} onClick={() => run.mutate("cloudy_soiled")}>Mendung + panel kotor (H07)</Button>
+        </div>
+        <p className="mt-2 text-xs text-ink-3">{d?.cloudySoiled ? "Produksi turun sekitar 60%, dan hanya H07 yang ditandai karena di bawah ekspektasi berawan dan di bawah median klaster." : d?.cloudy ? "Produksi turun sekitar 60% tanpa alert gangguan. Hanya ada info cuaca." : "Kembali normal lewat tombol di bawah."}</p>
       </div>
+
+      <Button variant={d?.fastForward ? "primary" : "secondary"} className="w-full" aria-pressed={Boolean(d?.fastForward)} disabled={disabled} onClick={() => run.mutate("fast_forward_30d")}><FastForward className="h-4 w-4" aria-hidden /> {d?.fastForward ? "Batalkan percepatan" : "Percepat degradasi 30 hari"}</Button>
 
       <Button className="w-full" variant="secondary" disabled={disabled} onClick={() => run.mutate("reset", { onSuccess: () => toast.dismiss() })}>
         <RotateCcw className="h-4 w-4" aria-hidden /> Kembalikan ke kondisi awal

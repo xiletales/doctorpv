@@ -39,7 +39,7 @@ Header `x-gateway-key` berisi kunci per gateway (HMAC-SHA256 dari ID gateway den
       "ts": "2026-11-07T10:15:00+07:00",
       "seq": 18234,
       "buffered": false,
-      "metrics": { "dcVoltage": 382.4, "dcCurrent": 6.1, "acPowerW": 2240, "panelTempC": 47.2 },
+      "metrics": { "dcVoltage": 382.4, "dcCurrent": 6.1, "acPowerW": 2240, "panelTempC": 47.2, "irradiance": 812.5 },
       "status": { "inverter": "OK", "rssi": -71 }
     }
   ]
@@ -47,6 +47,17 @@ Header `x-gateway-key` berisi kunci per gateway (HMAC-SHA256 dari ID gateway den
 ```
 
 Jenis `battery` dan `meter` memakai bentuk yang sama. Skema lengkap ada di `src/lib/contracts/telemetry.ts`.
+
+Setiap titik PV punya sensor iradiasi murah sendiri (`irradiance`, W/m², boleh `null` bila sensor tidak melapor). Nilai yang hilang, di luar rentang, macet, atau jauh dari referensi cuaca tidak dipakai, dan titik itu ditandai "Sensor perlu verifikasi".
+
+## Referensi cuaca
+
+Ekspektasi tiap titik dihitung dari iradiasi, suhu panel, kWp, dan PR historis sistem itu sendiri. Antarmuka `WeatherProvider` (`src/lib/weather/`) punya dua implementasi:
+
+| Provider | Dipakai untuk |
+|---|---|
+| Simulasi | Bawaan. Telemetri simulasi harus dinilai terhadap langit simulasi yang sama. |
+| Open-Meteo | Tanpa API key, dicache 15 menit. Di prototipe hanya ditampilkan sebagai konteks cuaca nyata Surakarta. Untuk sensor sungguhan, setel `WEATHER_REFERENCE=open-meteo`. |
 
 ## Aturan penerimaan
 

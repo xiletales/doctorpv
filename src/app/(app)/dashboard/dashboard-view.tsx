@@ -247,6 +247,7 @@ function Hero({ timeline, index, setIndex }: { timeline?: TimelineDto; index: nu
                 <span className="text-lg text-slate-300">kW</span>
               </p>
               <p className="text-sm text-slate-400">Iradiasi {num(irr, 0)} W/m²</p>
+              <p className="text-xs text-slate-500">{snapshot.weather.label}{snapshot.weather.clearFraction < 0.7 ? `, ${num(snapshot.weather.clearFraction * 100, 0)}% dari hari cerah` : ""}</p>
             </div>
           </div>
           <SunArc ts={ts} irradiance={irr} />

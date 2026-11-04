@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { gatewayKey } from "../src/lib/live/gateway-key";
-import type { SimDirective, TelemetryMessage } from "../src/lib/contracts/telemetry";
+import { CLOUD_FACTOR, type SimDirective, type TelemetryMessage } from "../src/lib/contracts/telemetry";
 import { Engine, type WorldSample } from "../src/lib/sim/engine";
 import { defaultFaults, type Fault } from "../src/lib/sim/faults";
 import { hash01 } from "../src/lib/sim/rng";
@@ -13,11 +13,11 @@ const SECRET = process.env.GATEWAY_KEY_SECRET ?? "";
 const BUFFER_LIMIT = 20000;
 const B08_STEP = 3;
 const B08_MAX = 34;
-const CLOUD_FACTOR = 0.35;
+const stuckSensors = new Set<string>();
 const FAST_FORWARD_DAYS = 30;
 
 const world = buildWorld(envCenter());
-let directive: SimDirective = { clock: defaultClock(), inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, fastForward: false, repaired: [], resetEpoch: 0 };
+let directive: SimDirective = { clock: defaultClock(), inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, cloudySoiled: false, fastForward: false, repaired: [], resetEpoch: 0 };
 let seq = Math.floor(Date.now() / 1000);
 let engine: Engine;
 let lastT = 0;
@@ -72,7 +72,7 @@ function buildMessages(s: WorldSample, zoneIdx: number, buffered: boolean): Tele
     const j = gJ * jitter(idx, 3, 0.008);
     out.push({
       type: "pv", deviceId: `PV-${p.id}-01`, assetId: p.id, gatewayId, ts, seq, buffered,
-      metrics: { dcVoltage: round(p.dcV * jitter(idx, 4, 0.004)), dcCurrent: round(p.dcI * j), acPowerW: round(p.acW * j), panelTempC: round(p.tempC) },
+      metrics: { dcVoltage: round(p.dcV * jitter(idx, 4, 0.004)), dcCurrent: round(p.dcI * j), acPowerW: round(p.acW * j), panelTempC: round(p.tempC), irradiance: stuckSensors.has(p.id) ? round(p.sensorIrradiance) : round(p.sensorIrradiance * gJ) },
       status: { inverter: p.inverter, rssi: -58 - Math.floor(hash01(idx, 1) * 30) },
     });
   }

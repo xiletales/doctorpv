@@ -18,6 +18,8 @@ export interface PvSample {
   dcV: number;
   dcI: number;
   tempC: number;
+  /** What the point's own irradiance sensor reports. */
+  sensorIrradiance: number;
   inverter: "OK" | "TRIP" | "IDLE";
   offline: boolean;
 }
@@ -202,6 +204,7 @@ export class Engine {
     let tripped = false;
     let stuck = false;
     let offline = false;
+    let stuckSensor: number | null = null;
     for (const f of faults) {
       if (f.kind === "soiling") {
         const end = f.to ?? this.refDayStart + DAY;
@@ -214,6 +217,7 @@ export class Engine {
       } else if (f.kind === "inverter_trip") tripped = true;
       else if (f.kind === "sensor_stuck_zero") stuck = true;
       else if (f.kind === "device_offline") offline = true;
+      else if (f.kind === "irradiance_stuck") stuckSensor = f.magnitude ?? 0;
     }
     const noise = 0.985 + 0.03 * hash01(h.index, Math.floor(ts / 300));
     const base = pvPowerW(h.capacityKwp, g, ambient, h.pr) * factor * noise;
@@ -231,6 +235,7 @@ export class Engine {
       dcV: tripped && sun ? dcV * 1.08 : dcV,
       dcI,
       tempC,
+      sensorIrradiance: stuckSensor ?? g * (0.99 + 0.02 * hash01(h.index, 11)),
       inverter: tripped && sun ? "TRIP" : sun ? "OK" : "IDLE",
       offline,
     };
@@ -246,7 +251,7 @@ export class Engine {
     const faults = activeFaults(this.faults, b.id, ts);
     const voltage = 48.2 + (soc / 100) * 5.6 + (perUnitW > 0 ? 0.3 : perUnitW < 0 ? -0.25 : 0);
     const currentA = perUnitW / voltage;
-    let temp = ambient + 2.5 + b.tempOffset + Math.abs(currentA) * 0.11;
+    let temp = ambient + 2.5 + b.tempOffset + Math.abs(currentA) * 0.07;
     let spread = 18 + hash01(b.index, 9) * 22 + Math.abs(currentA) * 0.25;
     let bms: BatterySample["bms"] = "OK";
     for (const f of faults) {

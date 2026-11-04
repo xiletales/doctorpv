@@ -293,10 +293,38 @@ function HealthTab() {
 
 const tab = "rounded-lg px-3 py-1.5 text-sm font-medium text-ink-2 data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-sm";
 
+interface WeatherStatus {
+  used: { label: string; reading: { irradiance: number; cloudCover: number } | null };
+  real: { label: string; reading: { irradiance: number; cloudCover: number; ambientC: number } | null };
+}
+
+function WeatherStrip() {
+  const q = useQuery({ queryKey: ["weather"], queryFn: () => apiGet<WeatherStatus>("/api/v1/weather"), refetchInterval: 60_000 });
+  const d = q.data;
+  if (!d) return null;
+  return (
+    <Card className="flex flex-wrap gap-x-8 gap-y-2 px-5 py-3 text-sm">
+      <div>
+        <p className="font-medium text-ink">{d.used.label}</p>
+        <p className="text-xs text-ink-3">Dipakai menilai telemetri simulasi: {num(d.used.reading?.irradiance ?? 0, 0)} W/m², awan {num((d.used.reading?.cloudCover ?? 0) * 100, 0)}%</p>
+      </div>
+      <div>
+        <p className="font-medium text-ink">{d.real.label}</p>
+        <p className="text-xs text-ink-3">
+          {d.real.reading
+            ? `Cuaca nyata Surakarta saat ini: ${num(d.real.reading.irradiance, 0)} W/m², awan ${num(d.real.reading.cloudCover * 100, 0)}%, ${num(d.real.reading.ambientC, 0)} °C. Hanya konteks, tidak dipakai menilai data simulasi.`
+            : "Tidak terjangkau. Penilaian tetap berjalan dengan cuaca simulasi."}
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 export function AiView() {
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <PageTitle title="Diagnosis AI" description="Mesin statistik dan aturan yang dapat dijelaskan. Dari anomali ke kemungkinan penyebab, beserta buktinya." />
+      <PageTitle title="Diagnosis AI" description="Produksi rendah belum tentu panel rusak. Tiap titik dibandingkan dengan ekspektasi sesuai cuaca dan dengan median 30 titik." />
+      <WeatherStrip />
       <Tabs.Root defaultValue="anomaly" className="space-y-4">
         <Tabs.List aria-label="Bagian diagnosis" className="inline-flex gap-1 rounded-xl bg-surface-2 p-1">
           <Tabs.Trigger value="anomaly" className={tab}>Anomali dan diagnosis</Tabs.Trigger>

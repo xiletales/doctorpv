@@ -3,6 +3,7 @@ import type { AlertPriority } from "@/lib/types";
 export const THRESHOLDS = {
   minIrradiance: 150,
   productionRatio: 0.8,
+  peerFraction: 0.85,
   tripRatio: 0.1,
   tempHigh: 45,
   tempCritical: 55,
@@ -20,7 +21,8 @@ export type AlertType =
   | "low_soc"
   | "soh_degradation"
   | "device_offline"
-  | "gateway_offline";
+  | "gateway_offline"
+  | "weather_info";
 
 export const ALERT_TYPE_LABEL: Record<AlertType, string> = {
   inverter_trip: "Gangguan PV",
@@ -32,6 +34,7 @@ export const ALERT_TYPE_LABEL: Record<AlertType, string> = {
   soh_degradation: "Degradasi SoH",
   device_offline: "Sensor tidak merespons",
   gateway_offline: "Gateway terputus",
+  weather_info: "Info cuaca",
 };
 
 export interface Condition {
@@ -52,8 +55,12 @@ export interface PvReading {
   ratio: number;
 }
 
-/** Returns null when there is too little sun to judge, so that existing alerts are kept as they are. */
-export function evaluatePv(r: PvReading, irradiance: number): Condition[] | null {
+/**
+ * Decision rule: ratio is actual over an expectation that already accounts for the weather, so low
+ * absolute output alone never raises a fault. A fault also has to sit below the peer median.
+ * Returns null when there is too little sun to judge, so that existing alerts are kept as they are.
+ */
+export function evaluatePv(r: PvReading, irradiance: number, peerRatio = 1): Condition[] | null {
   if (irradiance < THRESHOLDS.minIrradiance) return null;
   const dcPower = r.dcV * r.dcI;
   if (r.acW < 20 && dcPower > 100) {
@@ -69,18 +76,39 @@ export function evaluatePv(r: PvReading, irradiance: number): Condition[] | null
       type: "inverter_trip",
       priority: "critical",
       message: `${r.id} berhenti berproduksi pada iradiasi ${Math.round(irradiance)} W/m².`,
-      recommendedAction: "Jadwalkan inspeksi inverter hari ini.",
+      recommendedAction: "Jadwalkan inspeksi inverter dan koneksi hari ini.",
     }];
   }
-  if (r.ratio < THRESHOLDS.productionRatio) {
+  if (r.ratio < THRESHOLDS.productionRatio && r.ratio < THRESHOLDS.peerFraction * peerRatio) {
     return [{
       type: "production_drop",
       priority: "medium",
-      message: `Produksi ${r.id} ${Math.round((1 - r.ratio) * 100)}% di bawah ekspektasi.`,
+      message: `Produksi ${r.id} ${Math.round((1 - r.ratio) * 100)}% di bawah ekspektasi sesuai cuaca saat ini, dan di bawah median klaster.`,
       recommendedAction: "Periksa kebersihan panel dan bayangan di sekitar atap.",
     }];
   }
   return [];
+}
+
+export function evaluateIrradianceSensor(id: string, problem: string | null): Condition | null {
+  if (!problem) return null;
+  return {
+    type: "sensor_suspect",
+    priority: "medium",
+    message: `Sensor iradiasi ${id} ${problem}. Ekspektasi sementara memakai referensi cuaca.`,
+    recommendedAction: "Verifikasi sensor iradiasi di lokasi. Ini bukan tanda panel rusak.",
+  };
+}
+
+/** Cluster-wide information, not a fault: output is low, and it is what the weather predicts. */
+export function evaluateWeather(input: { clearFraction: number; clearSkyW: number; medianRatio: number; lowShare: number }): Condition | null {
+  if (input.clearSkyW < 200 || input.clearFraction >= 0.7 || input.medianRatio < 0.85) return null;
+  return {
+    type: "weather_info",
+    priority: "low",
+    message: `Produksi klaster rendah karena cuaca: iradiasi ${Math.round(input.clearFraction * 100)}% dari hari cerah. Bukan kerusakan.`,
+    recommendedAction: "Tidak perlu tindakan. Tiap titik tetap dinilai terhadap ekspektasi sesuai cuaca.",
+  };
 }
 
 export interface BatteryReading {

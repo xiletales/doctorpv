@@ -21,7 +21,7 @@ export interface Anomaly {
   to: number;
   deviationPct: number;
   severity: "critical" | "high" | "medium" | "low";
-  pattern: "sudden_zero" | "gradual" | "reported_zero" | "partial" | "thermal" | "imbalance" | "aging" | "sensor";
+  pattern: "sudden_zero" | "gradual" | "reported_zero" | "partial" | "thermal" | "imbalance" | "aging" | "sensor" | "weather";
 }
 
 function severityFor(deviationPct: number): Anomaly["severity"] {

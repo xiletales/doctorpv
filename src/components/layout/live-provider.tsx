@@ -22,6 +22,7 @@ export function LiveProvider() {
       if (ev.kind === "new" || ev.kind === "upgraded") {
         const title = ev.message ?? "Alert baru";
         const opts = { description: ev.recommendedAction, duration: 8000 };
+        void qc.invalidateQueries({ queryKey: ["work-orders"] });
         if (ev.priority === "critical") toast.error(title, opts);
         else if (ev.priority === "high") toast.warning(title, opts);
         else if (ev.priority === "medium") toast.warning(title, opts);

@@ -5,10 +5,12 @@ import { axisTooltip, EChart, grid, legend, timeAxis, tooltip, useChartTheme, va
 import { AlertTimeline, DetailHeader, HealthCard, LiveRingChart, StatTile } from "@/components/domain/asset-parts";
 import { DisclaimerNote, ErrorState } from "@/components/domain/status";
 import { Card, CardHeader, Skeleton } from "@/components/ui/card";
+import { VERDICT_LABEL } from "@/lib/ai/assess";
 import { apiGet } from "@/lib/client";
 import type { HouseDetail } from "@/lib/detail-dto";
 import { longDate, num } from "@/lib/format";
 import type { PvLive, RingPoint } from "@/lib/live/store";
+import { facilityOf } from "@/lib/site";
 import { useLive } from "@/stores/live";
 
 const pickPower = (p: RingPoint) => p.a / 1000;
@@ -89,7 +91,14 @@ export function SolarDetailView({ id }: { id: string }) {
   const deviation = p ? (p.ratio - 1) * 100 : 0;
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <DetailHeader back="/solar" backLabel="Rumah dan surya" id={id} subtitle={`${d.address}, ${d.ownerName ?? d.ownerCode}`} status={p?.status} assetParam={id} />
+      <DetailHeader back="/solar" backLabel="Rumah dan surya" id={id} subtitle={`${d.address}, ${d.ownerName ?? d.ownerCode}${facilityOf(id) ? ", fasilitas umum" : ""}`} status={p?.status} assetParam={id} />
+      {p ? (
+        <Card className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-5 py-3 text-sm">
+          <span className="font-medium text-ink">{VERDICT_LABEL[p.verdict]}</span>
+          <span className="text-ink-2">{p.verdict === "cuaca" ? "Produksi rendah karena mendung, bukan kerusakan. " : ""}Ekspektasi memakai iradiasi {num(p.irradiance, 0)} W/m² dari {p.irradianceSource === "sensor" ? "sensor titik ini" : "referensi cuaca"}.</span>
+          <span className="text-xs text-ink-3">Estimasi, perlu verifikasi teknisi.</span>
+        </Card>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile label="Daya AC" value={num((p?.acW ?? 0) / 1000, 2)} unit="kW" tone={p?.inverter === "TRIP" ? "bad" : undefined} foot={`Ekspektasi ${num((p?.expectedW ?? 0) / 1000, 2)} kW`} />
         <StatTile label="Deviasi dari ekspektasi" value={`${deviation > 0 ? "+" : ""}${num(deviation, 0)}`} unit="%" tone={deviation < -50 ? "bad" : deviation < -20 ? "warn" : undefined} />

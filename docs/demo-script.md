@@ -28,7 +28,7 @@
 - AI: mesin statistik dan aturan yang dapat dijelaskan, bukan model terlatih. Pengujian memakai gangguan dari simulator sendiri, jadi akurasi di lapangan belum diukur. Langkah berikutnya: data lapangan.
 - Jelajah waktu: bagian mendatang memakai prakiraan dari model simulasi yang sama, bukan prakiraan cuaca sungguhan.
 - Berbagi surplus antarrumah, penyimpanan bersama, dan kredit ekspor: asumsi model yang perlu dikonfirmasi dengan regulasi dan PLN.
-- Koordinat: placeholder, sehingga tata letak rumah tidak mengikuti jalan sebenarnya.
+- Koordinat: pusat peta mendekati Panularan, tetapi posisi rumah hasil generator, sehingga tata letak rumah tidak mengikuti jalan sebenarnya.
 
 **Bila ada masalah**
 - Penanda "Simulator tidak berjalan": jalankan `npm run simulate` di terminal kedua.

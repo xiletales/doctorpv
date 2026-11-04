@@ -5,6 +5,7 @@ export type FaultKind =
   | "shading"
   | "inverter_trip"
   | "sensor_stuck_zero"
+  | "irradiance_stuck"
   | "thermal"
   | "imbalance"
   | "device_offline";

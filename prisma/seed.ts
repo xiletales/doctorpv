@@ -272,7 +272,7 @@ function seedAlerts() {
       const h = houseById.get(p.id);
       if (!h) continue;
       const exp = expectedPowerW(h.capacityKwp, sample.g, sample.ambient, baselines.get(h.id) ?? h.pr);
-      const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: exp > 0 ? p.acW / exp : 1 }, sample.g) ?? [];
+      const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: exp > 0 ? p.acW / exp : 1 }, sample.g, 1) ?? [];
       for (const c of conds) {
         const f = activeFaults(faultIndex, p.id, sample.ts)[0];
         open.set(`${p.id}:${c.type}`, { assetType: "pv", zoneId: h.zoneId, condition: c, from: f?.from ?? sample.ts - 3600 });

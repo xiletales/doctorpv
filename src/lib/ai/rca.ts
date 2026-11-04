@@ -74,21 +74,48 @@ export interface PvFeatures {
   recurringHours: boolean;
   /** True when the drop appeared within the latest day. */
   abrupt: boolean;
+  /** Current irradiance over the clear-sky value. Under 0.7 means notably cloudy. */
+  clearFraction?: number;
+  /** Set when the point's irradiance sensor was not trusted. */
+  sensorProblem?: string | null;
 }
 
 const PV_CAUSES: CauseDef[] = [
-  { key: "inverter", label: "Gangguan inverter", prior: 0.2, action: "Periksa status dan kode kesalahan inverter, lalu nyalakan ulang sesuai prosedur." },
-  { key: "soiling", label: "Panel kotor atau penurunan kinerja", prior: 0.3, action: "Bersihkan panel, lalu bandingkan produksi sebelum dan sesudahnya." },
+  { key: "cuaca", label: "Cuaca (mendung/hujan)", prior: 0.1, action: "Tidak perlu tindakan. Produksi rendah karena mendung, bukan kerusakan." },
+  { key: "inverter", label: "Inverter/koneksi bermasalah", prior: 0.25, action: "Periksa status inverter, konektor DC, dan pengaman, lalu nyalakan ulang sesuai prosedur." },
+  { key: "soiling", label: "Panel kotor / degradasi", prior: 0.3, action: "Bersihkan panel, lalu bandingkan produksi sebelum dan sesudahnya." },
   { key: "shading", label: "Bayangan parsial", prior: 0.2, action: "Periksa objek peneduh pada jam produksi turun, seperti pohon atau bangunan baru." },
-  { key: "sensor", label: "Anomali sensor pengukuran", prior: 0.15, action: "Verifikasi pembacaan dengan alat ukur sebelum menyimpulkan PV rusak." },
-  { key: "wiring", label: "Masalah kabel atau konektor", prior: 0.15, action: "Periksa konektor DC, sambungan string, dan pengaman." },
+  { key: "sensor", label: "Sensor perlu verifikasi", prior: 0.15, action: "Verifikasi pembacaan dengan alat ukur sebelum menyimpulkan PV rusak." },
 ];
 
 export function diagnosePv(f: PvFeatures): Diagnosis {
   const dcPower = f.dcVoltage * f.dcCurrent;
   const atZero = f.acPowerW < 20;
   const sun = f.irradiance >= 150;
+  const clear = f.clearFraction ?? 1;
+  const cloudy = clear < 0.7;
+  const onExpectation = f.ratioNow >= 0.85;
   return score(PV_CAUSES, [
+    {
+      when: cloudy && onExpectation,
+      evidence: `Iradiasi hanya ${Math.round(clear * 100)}% dari hari cerah, dan produksi tetap ${Math.round(f.ratioNow * 100)}% dari ekspektasi sesuai cuaca itu.`,
+      lr: { cuaca: 40, soiling: 0.1, shading: 0.2, inverter: 0.05, sensor: 0.2 },
+    },
+    {
+      when: !cloudy || !onExpectation,
+      evidence: "Produksi tidak bisa dijelaskan oleh cuaca.",
+      lr: { cuaca: 0.02 },
+    },
+    {
+      when: cloudy && !onExpectation,
+      evidence: `Di hari mendung pun, produksi ${Math.round((1 - f.ratioNow) * 100)}% di bawah ekspektasi sesuai cuaca, dan di bawah median klaster ${Math.round(f.peerRatioNow * 100)}%.`,
+      lr: { soiling: 1.5, shading: 1.2, inverter: 1.2 },
+    },
+    {
+      when: Boolean(f.sensorProblem),
+      evidence: `Sensor iradiasi ${f.sensorProblem ?? ""}.`,
+      lr: { sensor: 20, soiling: 0.3, shading: 0.3, inverter: 0.3 },
+    },
     {
       when: f.inverterTrip,
       evidence: "Inverter melaporkan status TRIP.",
@@ -97,12 +124,12 @@ export function diagnosePv(f: PvFeatures): Diagnosis {
     {
       when: atZero && sun && f.dcVoltage > 100 && f.dcCurrent < 0.5,
       evidence: `Output AC nol pada iradiasi ${Math.round(f.irradiance)} W/m² sementara tegangan DC tetap ${Math.round(f.dcVoltage)} V.`,
-      lr: { inverter: 8, wiring: 1.5, soiling: 0.1, shading: 0.2 },
+      lr: { inverter: 8, soiling: 0.1, shading: 0.2 },
     },
     {
       when: atZero && sun && f.dcVoltage < 20,
       evidence: "Tegangan DC tidak terbaca padahal iradiasi tinggi.",
-      lr: { wiring: 10, sensor: 2, inverter: 0.4, soiling: 0.05, shading: 0.1 },
+      lr: { inverter: 6, sensor: 2, soiling: 0.05, shading: 0.1 },
     },
     {
       when: atZero && dcPower > 100,
@@ -112,7 +139,7 @@ export function diagnosePv(f: PvFeatures): Diagnosis {
     {
       when: f.abrupt && atZero,
       evidence: "Penurunan terjadi tiba-tiba dalam satu hari terakhir.",
-      lr: { inverter: 2.5, wiring: 2, soiling: 0.2 },
+      lr: { inverter: 2.5, soiling: 0.2 },
     },
     {
       when: f.trendPerDay < -0.004 && f.daysDegraded >= 5,
@@ -122,7 +149,7 @@ export function diagnosePv(f: PvFeatures): Diagnosis {
     {
       when: f.peerRatioNow > 0.9 && f.ratioNow < 0.85 * f.peerRatioNow,
       evidence: `Rumah lain di klaster normal (${Math.round(f.peerRatioNow * 100)}% dari ekspektasi), sehingga cuaca bukan penyebabnya.`,
-      lr: { soiling: 1.6, inverter: 1.2, shading: 1.4, wiring: 1.2 },
+      lr: { soiling: 1.6, inverter: 1.2, shading: 1.4 },
     },
     {
       when: f.recurringHours,
@@ -133,6 +160,39 @@ export function diagnosePv(f: PvFeatures): Diagnosis {
       when: !atZero && f.ratioNow > 0.3,
       evidence: "Panel masih menghasilkan daya, hanya di bawah ekspektasi.",
       lr: { soiling: 1.5, shading: 1.3, inverter: 0.3, sensor: 0.5 },
+    },
+  ]);
+}
+
+export interface ClusterWeatherFeatures {
+  clearFraction: number;
+  medianRatio: number;
+  /** Points below 70% of their clear-sky output. */
+  lowCount: number;
+  total: number;
+  sensorIrradiance: number;
+  referenceIrradiance: number;
+  referenceLabel: string;
+}
+
+/** The verdict for a cluster-wide drop. It uses the same scoring, and it stays an estimate. */
+export function diagnoseClusterWeather(f: ClusterWeatherFeatures): Diagnosis {
+  const agree = Math.abs(f.sensorIrradiance - f.referenceIrradiance) <= Math.max(100, f.referenceIrradiance * 0.3);
+  return score(PV_CAUSES, [
+    {
+      when: f.lowCount >= f.total * 0.7,
+      evidence: `${f.lowCount} dari ${f.total} titik turun bersamaan, jadi penyebabnya bersifat umum, bukan per panel.`,
+      lr: { cuaca: 12, soiling: 0.1, shading: 0.1, inverter: 0.1, sensor: 0.3 },
+    },
+    {
+      when: f.medianRatio >= 0.85,
+      evidence: `Rasio aktual terhadap ekspektasi sesuai cuaca tetap normal, median ${Math.round(f.medianRatio * 100)}%.`,
+      lr: { cuaca: 8, soiling: 0.2, shading: 0.2, inverter: 0.1 },
+    },
+    {
+      when: agree,
+      evidence: `Sensor iradiasi (${Math.round(f.sensorIrradiance)} W/m²) sejalan dengan ${f.referenceLabel.toLowerCase()} (${Math.round(f.referenceIrradiance)} W/m²).`,
+      lr: { cuaca: 4, sensor: 0.1 },
     },
   ]);
 }

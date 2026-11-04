@@ -18,6 +18,8 @@ export const pvMessage = z.object({
     dcCurrent: z.number(),
     acPowerW: z.number(),
     panelTempC: z.number(),
+    /** The point's own low-cost irradiance sensor, in W/m². Null when it reports nothing. */
+    irradiance: z.number().nullable(),
   }),
   status: z.object({ inverter: z.enum(["OK", "TRIP", "IDLE"]), rssi: z.number().int() }),
 });
@@ -63,12 +65,16 @@ export const ingestBatch = z.object({
   messages: z.array(z.unknown()).max(5000),
 });
 
+/** Irradiance multiplier for the cloud scenarios. Cooler panels recover a little, so output falls about 60%. */
+export const CLOUD_FACTOR = 0.36;
+
 export const SCENARIOS = [
   "inverter_h21",
   "battery_b08_overheat",
   "gateway_gw3_offline",
   "gateway_gw3_reconnect",
   "cloudy_day",
+  "cloudy_soiled",
   "fast_forward_30d",
   "reset",
 ] as const;
@@ -80,6 +86,8 @@ export interface SimDirective {
   batteryB08: boolean;
   gw3Offline: boolean;
   cloudy: boolean;
+  /** Set by "Mendung + panel kotor": other faults are cleared so that only one panel stands out. */
+  cloudySoiled: boolean;
   fastForward: boolean;
   /** Assets whose fault a completed work order has physically fixed. */
   repaired: string[];
