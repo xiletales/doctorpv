@@ -1,10 +1,9 @@
 import { expectedPowerW } from "./ai/expected";
 import { prisma } from "./db";
 import { live } from "./live/store";
-import { gangScope } from "./rbac";
 import { ambientC, clearSky } from "./sim/physics";
 import { dayStart, DAY, simNow, wibDay } from "./sim/time";
-import type { SessionUser } from "./types";
+import { ZONE_IDS } from "./sim/world";
 
 export interface CurvePoint {
   ts: number;
@@ -22,7 +21,7 @@ export interface OverviewDto {
   dayStart: number;
   kpi: {
     houses: number;
-    gangs: number;
+    zones: number;
     activePv: number;
     batteries: number;
     pvKwh: number;
@@ -42,19 +41,17 @@ export interface OverviewDto {
   yesterday: { ts: number; pv: number; load: number }[];
   expected: { ts: number; w: number }[];
   trend: { ts: number; pr: number; soc: number; soh: number }[];
-  faultsByGang: { gangId: string; critical: number; high: number; medium: number; low: number }[];
+  faultsByType: { label: string; critical: number; high: number; medium: number; low: number }[];
 }
 
 const kwh = (sumW: number) => (sumW * 300) / 3600 / 1000;
 
-/** Everything in this response is limited to the user's gangs. Coordinators never get RT totals. */
-export async function buildOverview(user: SessionUser, gangParam: string | null): Promise<OverviewDto> {
+export async function buildOverview(zoneParam: string | null): Promise<OverviewDto> {
   await live.init();
-  const scope = gangScope(user);
-  const allowed = scope ?? ["G1", "G2", "G3", "G4", "G5"];
-  const gang = gangParam && allowed.includes(gangParam) ? gangParam : null;
-  const gangs = gang ? [gang] : allowed;
-  const scopeId = gang ?? (scope === null ? "RT" : allowed[0]);
+  const allowed: string[] = [...ZONE_IDS];
+  const zone = zoneParam && allowed.includes(zoneParam) ? zoneParam : null;
+  const zones = zone ? [zone] : allowed;
+  const scopeId = zone ?? "CLUSTER";
 
   const now = simNow(live.clock);
   const today = dayStart(wibDay(now));
@@ -66,7 +63,7 @@ export async function buildOverview(user: SessionUser, gangParam: string | null)
   ]);
 
   const solar = await prisma.solarSystem.findMany({
-    where: { house: { gangId: { in: gangs } } },
+    where: { house: { zoneId: { in: zones } } },
     select: { capacityKwp: true, baselinePr: true, house: { select: { id: true } } },
   });
   const expected: { ts: number; w: number }[] = [];
@@ -86,11 +83,11 @@ export async function buildOverview(user: SessionUser, gangParam: string | null)
   const plnY = kwh(sameTimeY.reduce((a, r) => a + r.plnImportW, 0));
 
   const start30 = today - 29 * DAY;
-  const placeholders = gangs.map((g) => `'${g}'`).join(",");
+  const placeholders = zones.map((g) => `'${g}'`).join(",");
   const battDaily = await prisma.$queryRawUnsafe<{ d: number; soc: number; soh: number }[]>(
     `SELECT (t.ts + 25200) / 86400 AS d, AVG(t.soc) AS soc, AVG(t.soh) AS soh
      FROM BatteryTelemetry t JOIN Battery b ON b.id = t.assetId
-     WHERE t.res = 60 AND t.ts >= ${start30} AND t.ts <= ${now} AND b.gangId IN (${placeholders}) GROUP BY d ORDER BY d`,
+     WHERE t.res = 60 AND t.ts >= ${start30} AND t.ts <= ${now} AND b.zoneId IN (${placeholders}) GROUP BY d ORDER BY d`,
   );
   const [meter30, weather30] = await Promise.all([
     prisma.energyMeterReading.findMany({ where: { scopeId, res: 60, ts: { gte: start30, lte: now } }, select: { ts: true, pvW: true } }),
@@ -113,27 +110,27 @@ export async function buildOverview(user: SessionUser, gangParam: string | null)
     return { ts: dayStart(Number(b.d)), soc: Number(b.soc), soh: Number(b.soh), pr: pr && pr.ref > 0 ? pr.e / pr.ref : 0 };
   });
 
-  const open = await prisma.alert.findMany({ where: { status: { not: "resolved" }, gangId: { in: allowed } }, select: { gangId: true, priority: true, assetType: true, type: true } });
-  const faultsByGang = allowed.map((g) => {
-    const list = open.filter((a) => a.gangId === g);
+  const open = await prisma.alert.findMany({ where: { status: { not: "resolved" }, zoneId: { in: allowed } }, select: { zoneId: true, priority: true, assetType: true, type: true } });
+  const faultsByType = [["pv", "PV"], ["battery", "Baterai"], ["gateway", "Gateway"]].map(([type, label]) => {
+    const list = open.filter((a) => a.assetType === type && zones.includes(a.zoneId));
     const n = (p: string) => list.filter((a) => a.priority === p).length;
-    return { gangId: g, critical: n("critical"), high: n("high"), medium: n("medium"), low: n("low") };
+    return { label, critical: n("critical"), high: n("high"), medium: n("medium"), low: n("low") };
   });
 
-  const pvLive = [...live.pv.values()].filter((p) => gangs.includes(p.gangId));
-  const battLive = [...live.batteries.values()].filter((b) => gangs.includes(b.gangId));
-  const wo = await prisma.workOrder.count({ where: { gangId: { in: gangs }, status: { not: "done" } } });
+  const pvLive = [...live.pv.values()].filter((p) => zones.includes(p.zoneId));
+  const battLive = [...live.batteries.values()].filter((b) => zones.includes(b.zoneId));
+  const wo = await prisma.workOrder.count({ where: { zoneId: { in: zones }, status: { not: "done" } } });
   const tariff = Number(process.env.PLN_TARIFF_RP ?? 1444.7);
   const emission = Number(process.env.GRID_EMISSION_FACTOR ?? 0.87);
   const avoidedGrid = Math.max(0, loadKwh - plnKwh);
 
   return {
-    scopeLabel: gang ? gang.replace("G", "Gang ") : scope === null ? "Seluruh RT" : allowed.map((g) => g.replace("G", "Gang ")).join(", "),
+    scopeLabel: zone ? zone.replace("Z", "Zona ") : "Seluruh klaster",
     simTs: now,
     dayStart: today,
     kpi: {
       houses: pvLive.length,
-      gangs: gangs.length,
+      zones: zones.length,
       activePv: pvLive.filter((p) => p.status !== "offline" && p.inverter !== "TRIP").length,
       batteries: battLive.length,
       pvKwh,
@@ -144,7 +141,7 @@ export async function buildOverview(user: SessionUser, gangParam: string | null)
       selfSufficiency: loadKwh > 0 ? 1 - plnKwh / loadKwh : 0,
       selfSufficiencyYesterday: loadY > 0 ? 1 - plnY / loadY : 0,
       avgSoh: battLive.reduce((a, b) => a + b.soh, 0) / Math.max(battLive.length, 1),
-      activeFaults: open.filter((a) => gangs.includes(a.gangId) && a.priority !== "low").length,
+      activeFaults: open.filter((a) => zones.includes(a.zoneId) && a.priority !== "low").length,
       openWorkOrders: wo,
       savingsRp: avoidedGrid * tariff,
       avoidedKg: avoidedGrid * emission,
@@ -153,6 +150,6 @@ export async function buildOverview(user: SessionUser, gangParam: string | null)
     yesterday: rowsYesterday.map((r) => ({ ts: r.ts + DAY, pv: r.pvW, load: r.loadW })),
     expected,
     trend,
-    faultsByGang,
+    faultsByType,
   };
 }

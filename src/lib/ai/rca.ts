@@ -121,7 +121,7 @@ export function diagnosePv(f: PvFeatures): Diagnosis {
     },
     {
       when: f.peerRatioNow > 0.9 && f.ratioNow < 0.85 * f.peerRatioNow,
-      evidence: `Rumah lain di gang yang sama normal (${Math.round(f.peerRatioNow * 100)}% dari ekspektasi), sehingga cuaca bukan penyebabnya.`,
+      evidence: `Rumah lain di klaster normal (${Math.round(f.peerRatioNow * 100)}% dari ekspektasi), sehingga cuaca bukan penyebabnya.`,
       lr: { soiling: 1.6, inverter: 1.2, shading: 1.4, wiring: 1.2 },
     },
     {
@@ -163,7 +163,7 @@ export function diagnoseBattery(f: BatteryFeatures): Diagnosis {
   return score(BATTERY_CAUSES, [
     {
       when: peerGap > 8,
-      evidence: `Suhu ${peerGap.toFixed(1).replace(".", ",")} °C di atas baterai lain di gang yang sama.`,
+      evidence: `Suhu ${peerGap.toFixed(1).replace(".", ",")} °C di atas baterai lain di klaster.`,
       lr: { thermal: 5, sensor: 1.3, imbalance: 1.1, aging: 0.7 },
     },
     {

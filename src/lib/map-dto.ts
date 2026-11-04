@@ -1,14 +1,15 @@
-export interface MapGang {
+export interface MapZone {
   id: string;
   name: string;
   boundary: [number, number][];
-  alley: [number, number][];
+  road: [number, number][];
   label: [number, number];
 }
 
 export interface MapHouse {
   id: string;
-  gangId: string;
+  batteryId: string;
+  zoneId: string;
   ownerCode: string;
   ownerName: string | null;
   address: string;
@@ -22,7 +23,7 @@ export interface MapHouse {
 
 export interface MapBattery {
   id: string;
-  gangId: string;
+  zoneId: string;
   lat: number;
   lng: number;
   chemistry: string;
@@ -32,7 +33,7 @@ export interface MapBattery {
 
 export interface MapGateway {
   id: string;
-  gangId: string;
+  zoneId: string;
   lat: number;
   lng: number;
   firmware: string;
@@ -40,7 +41,8 @@ export interface MapGateway {
 
 export interface MapData {
   center: { lat: number; lng: number; zoom: number };
-  gangs: MapGang[];
+  boundary: [number, number][];
+  zones: MapZone[];
   houses: MapHouse[];
   batteries: MapBattery[];
   gateways: MapGateway[];

@@ -153,22 +153,22 @@ export function BatteryDetailView({ id }: { id: string }) {
   const d = q.data;
   if (!d) return <div className="space-y-4 p-6"><Skeleton className="h-16" /><Skeleton className="h-72 rounded-2xl" /></div>;
   const peerTemp = peers ? (() => {
-    const list = peers.filter((p) => p.gangId === d.gangId && p.id !== id).map((p) => p.tempC).sort((x, y) => x - y);
+    const list = peers.filter((p) => p.id !== id).map((p) => p.tempC).sort((x, y) => x - y);
     return list[Math.floor(list.length / 2)] ?? d.peerTemp;
   })() : d.peerTemp;
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <DetailHeader back="/batteries" backLabel="Kesehatan baterai" id={id} subtitle={`${d.gangId.replace("G", "Gang ")}, ${d.chemistry} ${num(d.capacityKwh, 2)} kWh, ${num(d.nominalVoltage, 1)} V, dipasang ${longDate(d.installDate)}`} status={b?.status} assetParam={id} />
+      <DetailHeader back="/batteries" backLabel="Kesehatan baterai" id={id} subtitle={`Melayani ${d.servedHouses.join(" dan ")}, ${d.zoneId.replace("Z", "Zona ")}, ${d.chemistry} ${num(d.capacityKwh, 2)} kWh, ${num(d.nominalVoltage, 1)} V, dipasang ${longDate(d.installDate)}`} status={b?.status} assetParam={id} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="px-4 py-3">
           <p className="text-xs text-ink-3">State of Charge</p>
           <p className="num mt-1 text-2xl font-semibold tracking-tight text-ink">{num(b?.soc, 1)}<span className="ml-1 text-xs font-normal text-ink-3">%</span></p>
-          <LevelBar value={b?.soc ?? 0} label="State of Charge" className="mt-1.5 bg-st-normal" />
+          <div className="mt-1.5"><LevelBar value={b?.soc ?? 0} label="State of Charge" className="bg-st-normal" /></div>
         </Card>
         <StatTile label="State of Health" value={num(b?.soh, 1)} unit="%" tone={(b?.soh ?? 100) < 80 ? "warn" : undefined} foot={`${num(b?.cycles, 0)} siklus`} />
-        <StatTile label="Suhu" value={num(b?.tempC, 1)} unit="°C" tone={(b?.tempC ?? 0) >= 55 ? "bad" : (b?.tempC ?? 0) >= 45 ? "warn" : undefined} foot={`Baterai lain di gang: ${num(peerTemp, 1)} °C`} />
+        <StatTile label="Suhu" value={num(b?.tempC, 1)} unit="°C" tone={(b?.tempC ?? 0) >= 55 ? "bad" : (b?.tempC ?? 0) >= 45 ? "warn" : undefined} foot={`Baterai lain: ${num(peerTemp, 1)} °C`} />
         <StatTile label="Tegangan dan arus" value={num(b?.voltage, 1)} unit={`V, ${num(b?.currentA, 1)} A`} foot={(b?.currentA ?? 0) > 0.5 ? "Mengisi" : (b?.currentA ?? 0) < -0.5 ? "Mengosongkan" : "Diam"} />
         <StatTile label="Selisih tegangan sel" value={num(b?.spreadMv, 0)} unit="mV" tone={(b?.spreadMv ?? 0) >= 120 ? "warn" : undefined} foot={`Status BMS: ${b?.bms ?? "–"}`} />
       </div>

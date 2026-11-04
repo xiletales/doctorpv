@@ -72,9 +72,6 @@ function UserMenu({ user }: { user: SessionUser }) {
           <div className="px-2 py-1.5">
             <p className="text-sm font-medium">{user.name}</p>
             <p className="text-xs text-ink-3">{user.email}</p>
-            {user.gangIds.length > 0 ? (
-              <p className="mt-1 text-xs text-ink-3">Wilayah: {user.gangIds.map((g) => g.replace("G", "Gang ")).join(", ")}</p>
-            ) : null}
           </div>
           <DropdownMenu.Item
             onSelect={() => void signOut({ callbackUrl: "/login" })}
@@ -111,7 +108,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       <div className="flex h-dvh overflow-hidden">
         <aside
           className={cn(
-            "hidden shrink-0 flex-col bg-rail text-slate-300 transition-[width] duration-200 md:flex",
+            "hidden shrink-0 flex-col border-r border-white/5 bg-rail text-slate-300 transition-[width] duration-200 md:flex",
             collapsed ? "w-[68px]" : "w-60",
           )}
         >
@@ -119,8 +116,8 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <LogoMark />
             {!collapsed ? (
               <div className="leading-tight">
-                <p className="text-sm font-bold tracking-tight text-white">DOCTOR PV</p>
-                <p className="text-[11px] text-slate-400">RT percontohan, 5 gang</p>
+                <p className="display text-sm font-bold tracking-wide text-white">SUNPULSE</p>
+                <p className="text-[11px] text-slate-400">Klaster permukiman, 30 rumah</p>
               </div>
             ) : null}
           </div>

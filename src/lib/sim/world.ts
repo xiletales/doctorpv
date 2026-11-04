@@ -8,7 +8,9 @@ export interface LatLng {
 export interface HouseDef extends LatLng {
   id: string;
   index: number;
-  gangId: string;
+  zoneId: string;
+  gatewayId: string;
+  batteryId: string;
   ownerCode: string;
   ownerName: string;
   address: string;
@@ -28,59 +30,64 @@ export interface HouseDef extends LatLng {
 export interface BatteryDef extends LatLng {
   id: string;
   index: number;
-  gangId: string;
+  zoneId: string;
+  gatewayId: string;
+  houseIds: [string, string];
   capacityKwh: number;
   nominalV: number;
   ageDays: number;
   sohRef: number;
   sohRatePerDay: number;
-  socOffset: number;
   tempOffset: number;
 }
 
 export interface GatewayDef extends LatLng {
   id: string;
-  gangId: string;
+  zoneId: string;
   firmware: string;
 }
 
-export interface GangDef {
+export interface ZoneDef {
   id: string;
   name: string;
   code: string;
   boundary: [number, number][];
-  alley: [number, number][];
+  road: [number, number][];
   labelLat: number;
   labelLng: number;
 }
 
 export interface World {
-  gangs: GangDef[];
+  boundary: [number, number][];
+  zones: ZoneDef[];
   houses: HouseDef[];
   batteries: BatteryDef[];
   gateways: GatewayDef[];
 }
+
+export const ZONE_IDS = ["ZA", "ZB", "ZC"] as const;
 
 const FIRST = ["Sri", "Bambang", "Wati", "Joko", "Siti", "Hendra", "Rina", "Yusuf", "Lina", "Dedi", "Nur", "Eko", "Maya", "Rudi", "Tuti", "Asep", "Ani", "Iwan", "Yanti", "Fajar"];
 const LAST = ["Rahayu", "Saputra", "Wulandari", "Pratama", "Kusuma", "Hidayat", "Permata", "Nugroho", "Sari", "Setiawan", "Utami", "Gunawan", "Maharani", "Firmansyah", "Andini"];
 const INVERTERS = ["SuryaGrid SG-2K", "SuryaGrid SG-3K", "HelioVolt HV-2.5K", "HelioVolt HV-3K"];
 const CAPACITIES = [1.1, 1.1, 1.65, 1.65, 2.2, 2.2, 2.75, 3.3];
 
-const ALLEY_LEN = 250;
-const ALLEY_GAP = 62;
+const COLUMN = 26;
+const ROAD_GAP = 58;
 const ROTATION = (14 * Math.PI) / 180;
 
-/** Battery health at the reference day. Only B043 sits under the 80% end-of-life threshold by default. */
+/** B12 starts just above end of life, so that the fast-forward scenario crosses the threshold. */
 const SOH_OVERRIDE: Record<string, { soh: number; rate: number }> = {
-  B043: { soh: 78.4, rate: 0.055 },
-  B028: { soh: 85.2, rate: 0.045 },
+  B12: { soh: 81.5, rate: 0.07 },
 };
 
+const id2 = (prefix: string, n: number) => `${prefix}${String(n).padStart(2, "0")}`;
+
+/** 3 zones, each with one internal road, 5 house pairs across it, and a battery at each pair. */
 export function buildWorld(center: LatLng): World {
   const rand = seeded(20261107);
   const mLat = 1 / 111320;
   const mLng = 1 / (111320 * Math.cos((center.lat * Math.PI) / 180));
-  /** Local metres (x along alley, y across alleys) to lat/lng, with a slight street-grid rotation. */
   const geo = (x: number, y: number): LatLng => {
     const rx = x * Math.cos(ROTATION) - y * Math.sin(ROTATION);
     const ry = x * Math.sin(ROTATION) + y * Math.cos(ROTATION);
@@ -91,94 +98,101 @@ export function buildWorld(center: LatLng): World {
     return [p.lng, p.lat];
   };
 
-  const world: World = { gangs: [], houses: [], batteries: [], gateways: [] };
+  const hx = (COLUMN * 5) / 2 + 6;
+  const halfAll = ROAD_GAP * 1.5 - 1;
+  const world: World = {
+    boundary: [pair(-hx - 4, -halfAll - 3), pair(hx + 4, -halfAll - 3), pair(hx + 4, halfAll + 3), pair(-hx - 4, halfAll + 3), pair(-hx - 4, -halfAll - 3)],
+    zones: [],
+    houses: [],
+    batteries: [],
+    gateways: [],
+  };
   let houseIdx = 0;
   let battIdx = 0;
 
-  for (let g = 0; g < 5; g++) {
-    const gangId = `G${g + 1}`;
-    const y = (2 - g) * ALLEY_GAP;
-    const half = ALLEY_GAP / 2 - 1.5;
-    const hx = ALLEY_LEN / 2 + 8;
-    const label = geo(-hx - 12, y);
-    world.gangs.push({
-      id: gangId,
-      name: `Gang ${g + 1}`,
-      code: `GANG-${g + 1}`,
+  ZONE_IDS.forEach((zoneId, z) => {
+    const gatewayId = `GW-${z + 1}`;
+    const y = (1 - z) * ROAD_GAP;
+    const half = ROAD_GAP / 2 - 1.5;
+    const label = geo(-hx - 16, y);
+    world.zones.push({
+      id: zoneId,
+      name: `Zona ${zoneId.slice(1)}`,
+      code: `ZONE-${zoneId.slice(1)}`,
       boundary: [pair(-hx, y - half), pair(hx, y - half), pair(hx, y + half), pair(-hx, y + half), pair(-hx, y - half)],
-      alley: [pair(-hx, y), pair(hx, y)],
+      road: [pair(-hx, y), pair(hx, y)],
       labelLat: label.lat,
       labelLng: label.lng,
     });
 
-    for (let n = 0; n < 20; n++) {
-      const side = n % 2 === 0 ? 1 : -1;
-      const col = Math.floor(n / 2);
-      const x = -ALLEY_LEN / 2 + 12 + col * ((ALLEY_LEN - 24) / 9) + (rand() - 0.5) * 3;
-      const off = side * (15 + (rand() - 0.5) * 3);
-      const pos = geo(x, y + off);
-      const pv = geo(x + 1.8, y + off + side * 2.2);
-      houseIdx += 1;
-      const id = `H${String(houseIdx).padStart(3, "0")}`;
-      const cap = CAPACITIES[Math.floor(rand() * CAPACITIES.length)];
-      world.houses.push({
-        id,
-        index: houseIdx,
-        gangId,
-        ownerCode: `PLG-${String(houseIdx * 37 + 1000)}`,
-        ownerName: `${FIRST[Math.floor(rand() * FIRST.length)]} ${LAST[Math.floor(rand() * LAST.length)]}`,
-        address: `Gang ${g + 1} No. ${n + 1}`,
-        lat: pos.lat,
-        lng: pos.lng,
-        pvLat: pv.lat,
-        pvLng: pv.lng,
-        capacityKwp: cap,
-        panelCount: Math.round(cap / 0.55),
-        inverterModel: INVERTERS[cap > 2.2 ? (rand() > 0.5 ? 1 : 3) : rand() > 0.5 ? 0 : 2],
-        tilt: 10 + Math.floor(rand() * 11),
-        azimuth: rand() > 0.5 ? 0 : 180,
-        ageDays: 420 + Math.floor(rand() * 720),
-        pr: 0.75 + rand() * 0.07,
-        loadScale: 0.8 + rand() * 0.45,
-        registryStatus: id === "H093" ? "maintenance" : "active",
-      });
-    }
-
-    for (let n = 0; n < 10; n++) {
+    for (let col = 0; col < 5; col++) {
       battIdx += 1;
-      const id = `B${String(battIdx).padStart(3, "0")}`;
-      const x = -ALLEY_LEN / 2 + 22 + n * ((ALLEY_LEN - 44) / 9);
-      const pos = geo(x, y + (n % 2 === 0 ? 5 : -5));
+      const batteryId = id2("B", battIdx);
+      const x = -((COLUMN * 4) / 2) + col * COLUMN;
+      const memberIds: string[] = [];
+      for (const side of [1, -1]) {
+        houseIdx += 1;
+        const id = id2("H", houseIdx);
+        memberIds.push(id);
+        const hxPos = x + (rand() - 0.5) * 3;
+        const off = side * (15 + (rand() - 0.5) * 3);
+        const pos = geo(hxPos, y + off);
+        const pv = geo(hxPos + 1.8, y + off + side * 2.2);
+        const cap = CAPACITIES[Math.floor(rand() * CAPACITIES.length)];
+        world.houses.push({
+          id,
+          index: houseIdx,
+          zoneId,
+          gatewayId,
+          batteryId,
+          ownerCode: `PLG-${houseIdx * 37 + 1000}`,
+          ownerName: `${FIRST[Math.floor(rand() * FIRST.length)]} ${LAST[Math.floor(rand() * LAST.length)]}`,
+          address: `Blok ${zoneId.slice(1)} No. ${houseIdx - z * 10}`,
+          lat: pos.lat,
+          lng: pos.lng,
+          pvLat: pv.lat,
+          pvLng: pv.lng,
+          capacityKwp: cap,
+          panelCount: Math.round(cap / 0.55),
+          inverterModel: INVERTERS[cap > 2.2 ? (rand() > 0.5 ? 1 : 3) : rand() > 0.5 ? 0 : 2],
+          tilt: 10 + Math.floor(rand() * 11),
+          azimuth: rand() > 0.5 ? 0 : 180,
+          ageDays: 420 + Math.floor(rand() * 720),
+          pr: 0.75 + rand() * 0.07,
+          loadScale: 0.8 + rand() * 0.45,
+          registryStatus: id === "H19" ? "maintenance" : "active",
+        });
+      }
+      const pos = geo(x + 6, y + (col % 2 === 0 ? 4.5 : -4.5));
       const ageDays = 360 + Math.floor(rand() * 900);
-      const override = SOH_OVERRIDE[id];
+      const override = SOH_OVERRIDE[batteryId];
       const rate = 0.012 + rand() * 0.018;
       const aged = 100 - ageDays * rate - rand() * 3;
-      const healthy = aged < 83 ? 83 + rand() * 6 : aged;
       world.batteries.push({
-        id,
+        id: batteryId,
         index: battIdx,
-        gangId,
+        zoneId,
+        gatewayId,
+        houseIds: [memberIds[0], memberIds[1]],
         lat: pos.lat,
         lng: pos.lng,
         capacityKwh: 10.24,
         nominalV: 51.2,
         ageDays,
-        sohRef: override?.soh ?? healthy,
+        sohRef: override?.soh ?? (aged < 83 ? 83 + rand() * 6 : aged),
         sohRatePerDay: override?.rate ?? rate,
-        socOffset: (rand() - 0.5) * 8,
         tempOffset: (rand() - 0.5) * 3,
       });
     }
-
-    const gw = geo(hx - 4, y + 4);
-    world.gateways.push({ id: `GW-${g + 1}`, gangId, firmware: `2.${3 + (g % 2)}.1`, lat: gw.lat, lng: gw.lng });
-  }
+    const gw = geo(0, y + 4.5);
+    world.gateways.push({ id: gatewayId, zoneId, firmware: `2.${3 + (z % 2)}.1`, lat: gw.lat, lng: gw.lng });
+  });
   return world;
 }
 
 export function envCenter(): LatLng {
   return {
-    lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? -6.9175),
-    lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? 107.6191),
+    lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? -6.2),
+    lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? 106.8166),
   };
 }

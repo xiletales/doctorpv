@@ -78,7 +78,7 @@ export function MaintenanceView() {
                             <PriorityBadge priority={o.priority as AlertPriority} />
                           </div>
                           <p className="mt-1 text-sm text-ink-2">{o.title}</p>
-                          <p className="mt-1.5 flex items-center gap-1 text-xs text-ink-3"><User className="h-3 w-3" aria-hidden /> {o.assignee}, {o.gangId.replace("G", "Gang ")}</p>
+                          <p className="mt-1.5 flex items-center gap-1 text-xs text-ink-3"><User className="h-3 w-3" aria-hidden /> {o.assignee}, {o.zoneId.replace("Z", "Zona ")}</p>
                           <p className="mt-0.5 text-xs text-ink-3">{o.source}, {dateTime(o.createdAt)}</p>
                           {o.status === "done" ? <Evaluation order={o} /> : null}
                           {canUpdate && o.status !== "done" ? (

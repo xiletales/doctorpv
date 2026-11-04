@@ -1,65 +1,67 @@
-# DOCTOR PV — Build Plan
+# SUNPULSE — Build Plan
 
-Status: **confirmed, with scope reduced for the 7 November 2026 pitch.** Indonesian only. PDF/Excel, user and settings CRUD, PWA, English, Postgres, the LLM assistant and the full kanban are cut. Some sizing below changed during the build, such as batteries now being 10.24 kWh. See README.md for the current state.
-Checked on 2026-11-04 against the npm registry and this machine.
+Status: **confirmed on the rebrand-and-reshape path (§9, option A) for the 7 November pitch.** The local database stays until after the pitch, so §2, §3 and §7 describe the later Supabase stage. See README.md for the current state.
+Checked on 2026-11-05 against the npm registry, Supabase docs, the Supabase project and this machine.
 
 ---
 
 ## 1. Decisions needed before Phase 1
 
-Each has a default, so "go" accepts all of them.
+Reply "go" to accept the defaults, but **D1 needs a real answer**.
 
 | # | Decision | Default | Why it matters |
 |---|---|---|---|
-| D1 | Where does the git repo live? | Run `git init` inside `Documents/hackton` | The enclosing repo is rooted at your **home directory** and has unrelated changes from `della-muda` and `learntrack2`. A commit from here could land in that repo. |
-| D2 | Node version | Install Node 24 LTS with nvm and pin it in `.nvmrc` | You have 25.9 (system) and 20.20 (nvm). Vitest 5 excludes 25 (`^22.12 \|\| ^24 \|\| >=26`) and better-sqlite3 13 needs ≥22, so neither works. |
-| D3 | Real RT location | Placeholder coordinates, set through env | Generated houses won't line up with real streets at any location. See risk R3. |
-| D4 | Hackathon deadline | Build all 5 phases in order | If time is short, use the cut line in §9. |
-| D5 | Demo environment | Local production build on a laptop | The design needs one long-running Node process, so it won't work on serverless as specified. See §2. |
+| D1 | **Competition date.** Is this still the 7 November pitch? | None, please tell me | If it is, a full rewrite in 2 days carries real risk. I'd use the cut line in §9 and keep the earlier version as the fallback. |
+| D2 | Where SUNPULSE lives | New branch `sunpulse`, with `main` tagged and left alone until SUNPULSE is demo-ready | Keeps a working demo available at all times. Renaming the GitHub repo is your call. |
+| D3 | Does anyone need a public URL? | No. Run locally with `next start` and Supabase in the cloud | Live state and the simulator need a long-running process. A public URL needs an always-on host, and the demo logins would have to come off the login page. |
+| D4 | Supabase region | Please check it in the dashboard | The database host looks like it's in Sydney (from its IPv6 prefix, not confirmed), and auth calls took about 0.6–0.9 s from here. Singapore would be better. The region can't be changed in place, but this project is empty, so now is the cheapest time to move. |
+| D5 | Number of gateways | **Keep 3** | One gateway could cover 30 houses, but it would be a single point of failure. With 3, one zone can go offline while the rest stays live, which also makes a better demo. |
+| D6 | Battery sharing | Each pair of houses uses its own battery first. Surplus then moves to other batteries over a cluster bus, and PLN connects at cluster level | The spec says both "serves its 2 houses" and "shared PV surplus". This reading satisfies both and gives a clean energy balance. |
+
+### What only you can do
+
+Do these in the dashboard and `.env.local`. Don't paste secrets into chat.
+
+1. **Turn off public sign-ups before seeding (Auth settings).** They're on now, so anyone with the public key can create an account. The app won't grant a role to accounts it didn't seed, but closing this is simple.
+2. **Set `DIRECT_URL` to the Session pooler (port 5432), not the direct host.** I confirmed the direct host has only an IPv6 address and this Mac has no IPv6 route, so migrations would fail. Copy the host from the Connect dialog.
+3. Set `DATABASE_URL` to the Transaction pooler (port 6543), and fill in `SUPABASE_SECRET_KEY`.
+4. **Free up disk space.** About 6 GB is free, down from 13 GB yesterday. I don't know what used it, as this project accounts for only about 1.4 GB.
 
 ---
 
 ## 2. Changes to the spec (rule 6)
 
-### Technically unrealistic as written
+### Won't work as written
 
 | Spec says | Problem | Proposal |
 |---|---|---|
-| Switch SQLite → Postgres "by changing one env var" | Prisma's `provider` must be a literal in the schema, not `env()`. Prisma 7 also needs a different driver adapter per database. | `DATABASE_PROVIDER` env plus `scripts/prisma-select.ts`, which generates the schema for that provider and selects the adapter. `npm run db:setup` runs it, so it is one env var plus one command. Postgres is smoke-tested once in Phase 5. |
-| `gangIds` on `User` | SQLite has no array columns. | `UserGang` join table. |
-| One `SolarTelemetry` table holding both hourly and 5-minute data | The two resolutions would mix and double-count. | Add a `resolution` column (`5m`, `1h`) and a unique index on `(assetId, resolution, time)`. |
-| One POST per device | 150+ devices at a 5 s tick is 30+ HTTP requests per second on an 8 GB laptop. | `/ingest` accepts an **array** of contract-compliant messages, so each gateway sends 1 POST per tick. The per-device topic and JSON contract are unchanged. |
-| Battery charge/discharge on a per-house meter | Batteries are shared per gang, so a house has no battery flow of its own. | Battery fields apply only at gang and RT scope. See §5. |
-| PWA on a technician's phone | Service workers need HTTPS or localhost, so a phone on `http://192.168.x.x` can't install it. | Run the phone demo through an HTTPS tunnel or local certificate, or show mobile view in browser device emulation. Covered in `demo-script.md`. |
-| SoH range 72–99% with 80% end of life | Batteries under 80% would get a negative remaining life. | Show "Past end-of-life threshold, replacement recommended" with no life estimate. |
+| `DIRECT_URL` on the direct connection, port 5432 | IPv6-only on the free plan (checked above) | Session pooler, as in §1. |
+| RLS protects every role | **Prisma connects as a database owner and bypasses RLS**, so RLS doesn't protect the API routes | Two separate layers: RBAC checks in code on every route, and RLS on every table for anything the browser reaches with the public key. Tests cover both. |
+| Live telemetry over Supabase Realtime | Supabase's benchmarks show Postgres Changes is much slower with RLS, because each change is checked for each subscriber. They suggest re-streaming through Broadcast | **Telemetry:** one Broadcast snapshot per 5 s tick on a private staff channel. **Alerts and work orders:** Postgres Changes, as they're low volume. **SSE:** kept as the fallback. |
+| Live updates for residents | 30 per-house channels would use about 518,000 of the 2 million free monthly messages per day | The resident view polls an RBAC-filtered API every 5 s. |
+| Latest values in memory | Doesn't work on serverless | Fine for D3's default. A hosted version would need an always-on server. |
 
-### Phase ordering conflicts
+### Conflicts inside the spec
 
 | Conflict | Resolution |
 |---|---|
-| Phase 3 pages need health scores, alerts and priorities, but the AI engine arrives in Phase 4. | Move the health score and a threshold-based alert engine to **Phase 2**. Until Phase 4, "Top priorities" uses rule-based ranking. Phase 4 then adds anomaly detection, root cause analysis and forecasting. |
-| Phase 1 must show the role-correct menus, but "no placeholder screens" is non-negotiable. | Between phases, unbuilt routes show a titled skeleton so navigation and RBAC can be tested. The rule applies in full at the end of Phase 5. |
-| Admin and technician views are needed side by side, but one browser holds one session cookie. | Use a second browser profile or a phone. Covered in `demo-script.md`. |
+| The payload example puts H21 on GW-2, but 10 houses per gateway puts H21 on GW-3 | GW-1 = H01–H10, GW-2 = H11–H20, GW-3 = H21–H30. The example gets corrected. |
+| SoH range of 72–99% vs. a default state with only 4 issues. Anything under 80% raises its own alert | Start at 82–99%. The "Fast-forward 30 days" scenario pushes a battery under 80%, which shows the threshold working. |
+| Dual-axis SoC/SoH chart | Both are percentages, so one axis is enough. Dual scales imply correlations that aren't there. |
+| "`.env.example`: placeholders only" vs. a block with real values | `.env.example` gets placeholders. Real values go in `.env.local`. The publishable key is designed to be public, but **this repo is public**, so nothing else gets committed. |
+| "Use exactly these names", yet gateway keys need a secret | No new variable. The seed generates the keys, stores hashes, and writes plaintext to a git-ignored file for the simulator. |
+| Partial shading in the default state, but a clock locked at 10:15 could fall outside the shaded hours | Shading runs 09:30–11:00, so it's visible at 10:15. |
 
-### Library choices that differ from a plain `npm install`
+### Additions
 
-| Library | Registry state | Choice |
-|---|---|---|
-| Prisma | `latest` points to **`8.0.0-rc.30`, a release candidate** | Pin **7.10.1** with `@prisma/adapter-better-sqlite3`. |
-| Auth.js | `next-auth` stable is 4.24.15 and v5 is still beta | Use **4.24.15** (rule 4: stable). It supports Next 16. JWT session with role and gang scope. |
-| Animation | `framer-motion` and `motion` are both 14.9.1 | Use `motion`, the current package name. |
-| PWA | `@serwist/next` adds a CLI and build step | Hand-written `sw.js` and manifest. It never caches authenticated API responses. |
-| TanStack Table | v9 is a new major version | Check the installed API before building `DataTable`. |
-
-**Additions to the stack:** `cmdk` (command palette), `@dnd-kit/core` (kanban), `@resvg/resvg-js` (server-side charts to PNG for PDFs).
-
-Other versions: Next 16.4.5, React 19.3.1, Tailwind 4.3.4, ECharts 6.1.0, echarts-for-react 3.0.6, MapLibre 6.16.0, react-map-gl 8.1.3, Zod 4.6.7, next-intl 4.14.9, TanStack Query 5.105.3, Zustand 5.0.16, exceljs 4.4.0, @react-pdf/renderer 4.9.0, Vitest 5.1.0.
-
-### Assumptions to check before the pitch
-
-- **PLN export credit:** my understanding is that Permen ESDM 2/2024 ended export credit for rooftop PV. The default is therefore **no credited export**: surplus PV is shown as curtailed and earns no savings. An `exportCreditEnabled` setting can change this. Please check the regulation.
-- **Shared gang storage:** one battery bank serving 20 houses implies a shared gang-level bus, which may have regulatory and metering implications. Judges may ask about this.
-- **Tariff and emission factor:** both are configurable and labeled as estimates. Confirm the default values against a citable source before presenting them.
+- **Keep the lockable clock.** It isn't in this spec, but an evening pitch would otherwise show 0 kW. Time Travel doesn't replace it: "now" still has to be daytime.
+- **Time Travel covers the dashboard only** (sun arc, energy flow, KPIs, mini map), with a clear "Menampilkan pukul 14.30" banner. Other pages stay live, because replaying 12 pages is a lot of work for little visible gain. Future times use the forecast and are labeled as estimates.
+- **Library pins:**
+  - Prisma **7.10.1** (`latest` is still `8.0.0-rc.30`)
+  - TanStack Table **v8**, which the existing tables already use
+  - `motion` rather than the `framer-motion` package
+  - no GSAP or Lottie unless the hero needs them
+- **Placeholder coordinates:** the spec's values are in central Jakarta, so 30 houses would land on high-rises. The env values stay as you specified, but the map opens on the schematic view first. A residential location would look better if you have one.
 
 ---
 
@@ -67,228 +69,207 @@ Other versions: Next 16.4.5, React 19.3.1, Tailwind 4.3.4, ECharts 6.1.0, echart
 
 ```mermaid
 flowchart LR
-  subgraph SIM["Simulator process"]
-    GW["GW-1 to GW-5<br/>physics, faults, offline buffer"]
+  subgraph SIM["Simulator (3 gateways)"]
+    GW["Physics, faults, offline buffer"]
   end
-  subgraph APP["Next.js process (single, long-running)"]
-    ING["POST /api/v1/ingest<br/>API key, Zod, dedupe"]
-    DQ["Data quality flags"]
-    LIVE["Live state + event bus<br/>(globalThis singleton)"]
-    AI["AI engine + alert rules"]
-    API["REST /api/v1<br/>with RBAC"]
-    SSE["GET /api/v1/stream"]
+  subgraph APP["Next.js (one long-running process)"]
+    ING["POST /api/v1/ingest<br/>hashed key, Zod, dedupe, quality"]
+    LIVE["Live state in memory"]
+    AI["Alert rules and AI engine"]
+    API["REST /api/v1 with RBAC"]
+    SSE["SSE fallback"]
   end
-  DB[("SQLite via Prisma<br/>Postgres optional")]
-  UI["Dashboard and /m PWA"]
-
-  GW -->|"batched JSON"| ING --> DQ --> LIVE
-  DQ -->|"every 5 min"| DB
-  LIVE --> AI --> DB
-  AI --> LIVE
-  LIVE --> SSE --> UI
-  DB --> API --> UI
-  API -->|"scenario state"| DB
-  DB -.->|"simulator polls scenario state"| GW
+  subgraph SB["Supabase"]
+    PG[("Postgres + RLS")]
+    RT["Realtime"]
+    AUTH["Auth"]
+    ST["Storage"]
+  end
+  UI["Dashboard, /m, /r"]
+  GW -->|"batched JSON"| ING --> LIVE --> AI
+  AI -->|"every 5 min, and alerts"| PG
+  LIVE -->|"Broadcast each tick"| RT --> UI
+  PG -->|"alerts and work orders"| RT
+  LIVE --> SSE -.-> UI
+  API --> PG
+  UI --> API
+  UI --> AUTH
+  UI --> ST
 ```
 
-Key design choices:
-
-- **One long-running process.** SSE and live state are in memory. A `globalThis` singleton survives Next's module reloads. This can't run on SQLite with serverless instances, so a real multi-instance deployment would need Postgres and a broker such as Redis or MQTT. `docs/architecture.md` will explain this.
-- **Live and stored data are separate.** Each 5 s tick updates memory and SSE. Only 5-minute boundaries are written to the database.
-- **Scenarios reach the simulator through shared state.** The API writes the active scenario and the simulator picks it up within 1 tick. Faults therefore travel the same ingest → detect → alert path as real data, not a shortcut.
-- **Virtual clock.** All time comes from one `simClock`. See risk R1.
-
----
-
-## 4. Project structure
-
-The project lives directly in `Documents/hackton` (the spec's `doctor-pv/`).
-
-```
-prisma/        schema.template.prisma, seed.ts
-simulator/     index.ts, physics.ts, scenarios.ts, geo.ts, clock.ts
-scripts/       prisma-select.ts, demo.ts
-src/app/
-  (auth)/login
-  (app)/       dashboard, map, solar, batteries, energy, ai, maintenance,
-               alerts, reports, devices, users, settings, about, demo
-  m/           technician PWA
-  api/v1/      route handlers
-src/components/ ui, charts, map, layout, domain
-src/lib/       ai, energy, quality, rbac, db, sse, live, format, i18n, contracts
-src/stores/    zustand
-messages/      id.json, en.json
-docs/          architecture, iot-contract, api, demo-script
-tests/
-```
-
-Zod schemas in `src/lib/contracts` are the one source of types for the API, client and simulator.
-
----
-
-## 5. Data model
-
-The entities are those in spec §5, plus these changes:
-
-- **Added:** `UserGang`, `IngestDedupe` (or a unique `deviceId + seq` index), `Quarantine` (rejected payloads), `ScenarioState`, `WorkOrderEvent` (status history).
-- **Changed:** telemetry tables get `resolution`. `quality` is a bit-flag integer. JSON payloads use Prisma `Json`.
-- **Photos:** stored under `data/uploads/` and served through an authenticated route, not `public/`.
+- **Keep pages fast despite remote latency.** Live values come from memory, and history is cached for short periods, so pages don't wait on several round trips to the database.
+- **Don't call Auth on every request.** The proxy verifies the JWT locally with `getClaims` where possible, since each Auth call took 0.6–0.9 s here.
+- **Roles live in the JWT** (`app_metadata`: role, house ID), set by the seed with the secret key. RLS policies read the JWT, which avoids recursive lookups on `profiles`.
+- **Secret key check:** a build step fails if `SUPABASE_SECRET_KEY` appears in the client bundle.
 
 ### Metering boundaries
 
 | Meter | Location | Measures |
 |---|---|---|
-| M1 | Each house, PV inverter AC output | PV generation |
+| M1 | Each house, inverter AC output | PV production |
 | M2 | Each house, load panel | House load |
-| M3 | Gang bus, battery bank | Charge and discharge |
-| M4 | Gang bus, PLN connection | Import and export |
+| M3 | Each battery | Charge and discharge |
+| M4 | Cluster, PLN connection | PLN import |
 
-Gang balance (a unit test must close this within tolerance):
+Balance, with a required unit test: `PV + PLN_import + Battery_discharge = Load + Battery_charge + Curtail + Losses`.
 
-`ΣPV + PLN_import + Batt_discharge = ΣLoad + Batt_charge + Export + Curtail + Losses`
+**No export credit** stays the default, as agreed earlier, and becomes a Settings toggle here.
 
-### System sizing
+### Sizing
 
-These values give a plausible energy story. They are illustrative and configurable.
+Scaled from the mix tuned for the earlier version, so batteries are still charging at 10:15.
 
 | Item | Assumption | Result |
 |---|---|---|
-| PV | 100 systems, 1–3 kWp, about 4 kWh/kWp/day | About 200 kWp, 800 kWh/day |
-| Load | 100 houses, 5–8 kWh/day | About 650 kWh/day, evening peak |
-| Battery | 50 × 51.2 V 100 Ah LiFePO₄ (5.12 kWh) | About 256 kWh total |
-
-Self-sufficiency is expected to be high but below 100%, with PLN covering cloudy days and late evenings.
+| PV | 30 systems, 1.1–3.3 kWp | About 57 kWp, 270 kWh/day |
+| Load | 30 houses, about 7 kWh/day each | About 210 kWh/day |
+| Battery | 15 × 51.2 V 200 Ah LiFePO₄ | About 154 kWh |
 
 ### Data volume
 
-| Dataset | Rows (approx.) |
-|---|---|
-| 5-minute, 48 h (150 assets + 106 meters) | 147,000 |
-| Hourly, 30 days (150 assets + 106 meters) | 184,000 |
+91 telemetry sources (30 PV, 15 batteries, 46 meters):
 
-That is roughly 330,000 rows. Size and seed time are estimates, likely around 100 MB and under 2 minutes, and I'll measure both in Phase 2. If they run high, night-time PV rows are the first to drop.
+| Dataset | Rows |
+|---|---|
+| 5-minute, 48 h | About 52,000 |
+| Hourly, 30 days | About 66,000 |
+| Live writes | About 26,000 per day, pruned by the retention job |
+
+This should fit comfortably in 500 MB. I'll measure actual size and seed time over the network in Phase 2.
 
 ---
 
-## 6. Role permissions
+## 4. Reuse from the earlier version
 
-| Capability | DLH | Admin RT | Koordinator Gang | Teknisi |
+The old alley concept was removed from the code, and a check script fails the build if the word reappears. It still exists in git history.
+
+| Area | Plan |
+|---|---|
+| Physics, fault models, simulator | Keep, adapting topology and dispatch |
+| AI engine, alert rules, tests | Keep. Peer comparison now covers the whole cluster |
+| Ingest, dedupe, offline buffer, demo scenarios | Keep. Add 2 scenarios: cloudy day and fast-forward |
+| Map, charts, tables, energy flow, sun arc | Keep and restyle |
+| Data layer | **Rewrite:** Postgres, migrations, RLS |
+| Auth | **Rewrite:** Supabase Auth |
+| Visual design | **Redo:** the "Solar Pulse" design system |
+| All other pages | New, or rebuilt around the new topology |
+
+---
+
+## 5. Roles
+
+| Capability | DLH | Admin Klaster | Teknisi | Warga |
 |---|---|---|---|---|
-| Monitoring pages | All | All | Assigned gangs | Assigned assets |
-| Owner names | Yes | Yes | Own gang only | Owner code only |
-| AI diagnosis | Yes | Yes | Assigned gangs | Assigned assets |
-| Create or assign work orders | Yes | Yes | Create in own gang | No |
-| Update work order progress | Yes | Yes | No | Own orders |
-| Verify repairs | Yes | Yes | No | No |
-| Reports | All | All | Assigned gangs | No |
-| Devices | Manage | Manage | View own gang | View |
-| Users, settings | Manage | Read-only | No | No |
+| Monitoring pages | All | All | All, read-only | Own house and its battery |
+| Owner names | Yes | Yes | Owner code only | Own only |
+| AI diagnosis | Yes | Yes | Yes | No |
+| Alerts | Handle | Handle | Handle | See own issues |
+| Work orders | Create, assign, verify | Create, assign, verify | Update assigned | Report a fault |
+| Reports | Yes | Yes | Maintenance only | No |
+| Devices | Manage | Manage | View | No |
+| Users | Manage | View | No | No |
+| Settings | Manage | Most, not API keys or backup | No | No |
 | Demo controller | Yes | Yes | No | No |
 
-Enforced by a single `requirePermission(session, action, scope)` on every API route. The UI reads the same matrix, and SSE events are filtered per user. This table refines the spec's role table, so please correct anything that doesn't match your intent.
+**Privacy:** a battery is shared by 2 houses, so a Warga sees its status but nothing about the neighbor's consumption or name.
 
 ---
 
-## 7. AI approach
+## 6. Design system
 
-The engine is **statistical and rule-based, not a trained model**. It is explainable and fits a prototype with no field data.
+The spec sets the palette, fonts, dark-first theme and bento layout, so I'll follow those.
 
-| Function | Method |
-|---|---|
-| Expected production | Irradiance, temperature, capacity and each system's own historical PR |
-| Anomaly detection | Residual over N intervals, robust z-score, peer comparison within gang, range and stuck-value checks |
-| Root cause | Rule and Bayesian-style scoring, with normalized probabilities and evidence |
-| Predictive | Regression on SoH and normalized PV performance, with confidence intervals |
-| Health score | Configurable weighted formula, with breakdown shown |
-| Forecast | Irradiance pattern, recent cloudiness and historical load profile |
-
-- **Isolation Forest is a stretch goal.** The ensemble already detects every required fault, so it adds little for the demo.
-- **Don't quote accuracy figures in the pitch.** The tests check detection against faults from our own simulator, which proves the pipeline works but says nothing about real-world accuracy. A good line for judges: "validated on simulated faults; field data is the next step."
-- **Ask DOCTOR PV:** uses the Claude API when `ANTHROPIC_API_KEY` is set, with the model set by env and checked against current docs in Phase 4. Otherwise it uses the rule-based responder. **Owner names are never included in the context sent to the API.**
+- **Signature element:** the Pulse Score ring with its heartbeat line, plus the isometric cluster on the landing page.
+- **Restraint:** the spec lists many effects at once. To keep it from feeling like a template, aurora appears only on the landing hero and dashboard header, glows only on hero and KPI cards, and everything else stays quiet.
+- **Status:** always icon + label + color, with the same 5 states everywhere.
+- **Charts:** I'll re-run the palette validator for the new colors in both themes, because amber, coral and red can collide with the status colors.
+- **Motion:** transform and opacity only, paused when the tab is hidden, off under reduced motion.
+- **Review:** screenshots in both themes at the end of each phase.
 
 ---
 
-## 8. Phases
+## 7. Phases
 
-Every phase ends with `lint`, `typecheck` and `build` passing, a summary, and a stop for your review.
+Each ends with lint, typecheck, build and a browser check with no console errors, then a stop for your review.
 
 ### Phase 1: Foundation
-- [ ] Repo, Node pin, Next.js, strict TypeScript, ESLint, Prettier, Vitest
-- [ ] Design tokens, light/dark themes, fonts, ID/EN (cookie-based, no URL prefix)
-- [ ] App shell: sidebar, top bar, command palette
-- [ ] Minimal Prisma schema (`User`, `UserGang`, `AuditLog`), auth, RBAC matrix, demo accounts
-- [ ] Login page with quick-login buttons
-- [ ] Base components: `KpiCard`, `StatusBadge`, `LiveIndicator`, `EmptyState`, `ErrorState`, `DisclaimerNote`
+- [ ] Branch and tag, rename, remove the old grouping concept, automated check
+- [ ] Solar Pulse tokens, dark and light themes, ID/EN, app shell, command palette
+- [ ] Supabase Auth, RBAC, 4 demo accounts
+- [ ] Landing and login page with the isometric cluster
 
-**Done when:** each of the 4 roles logs in and sees the correct menus, and API access is denied for routes outside the role.
+**Done when:** each role logs in and sees the correct menus.
+**Note:** demo accounts need `SUPABASE_SECRET_KEY`, so I'll ask for `.env.local` at the start of this phase, not Phase 2 as the spec says.
 
 ### Phase 2: Data and IoT
-- [ ] Full schema, geo generator, 30-day seed
-- [ ] Simulator: physics, dispatch, faults, `simClock`
-- [ ] `/ingest`, quality pipeline, quarantine, dedupe, late-data placement
-- [ ] Live state, event bus, `/stream`
-- [ ] Health score and threshold alert engine *(moved from Phase 4)*
-- [ ] Tests: energy balance, health score bounds
+- [ ] Prisma schema on Supabase, `supabase/policies.sql`, RLS tests per role
+- [ ] Geo generator, 30-day seed, adapted simulator, default demo state
+- [ ] `/ingest` with hashed keys, quality pipeline, Broadcast and SSE, retention job
 
-**Done when:** `npm run seed` and `npm run simulate` produce live data through the API and SSE, the default gang states match the spec, and seed size and time have been measured.
+**Done when:** `npm run seed` and `npm run simulate` show live data in the UI, with seed size and time measured.
 
 ### Phase 3: Core monitoring
-- [ ] Dashboard, Web-GIS, Solar (list and detail), Batteries (list and detail)
-- [ ] Hybrid Energy (flow and Sankey), Alert Center, User Management
+- [ ] Dashboard with Pulse Score, Time Travel and Sun Arc
+- [ ] Web-GIS, House & Solar, Battery Health, Hybrid Energy, Alert Center, Users
 
-**Done when:** every page shows live simulated data, filters work, and map interaction is smooth.
+**Done when:** every page shows live data, filters work, and the map is smooth.
 
 ### Phase 4: Intelligence
-- [ ] AI engine and tests for every fault type, AI page with 4 tabs, assistant
-- [ ] Maintenance: kanban, calendar, work order detail, verification, before/after evaluation
-- [ ] Technician view at `/m`
+- [ ] 4 AI tabs, predictive risk, 24-hour forecast, Ask SUNPULSE
+- [ ] Maintenance: kanban, calendar, photos, verification, effectiveness evaluation
+- [ ] Technician `/m` and resident `/r`
 
-**Done when:** each injected fault gives the correct detection, diagnosis, alert and recommended work order, and the full workflow runs end to end.
+**Done when:** each injected fault gives the correct detection, diagnosis, alert and recommended work order.
 
 ### Phase 5: Advanced and polish
-- [ ] Reports (PDF, Excel), Devices with self-diagnostic and gateway buffer
-- [ ] Settings, audit log UI, backup/restore, system health
-- [ ] Demo Scenario Controller UI, offline map fallback, About page
-- [ ] Animation polish, responsive and accessibility QA, PWA, docs, Postgres smoke test
+- [ ] Reports (PDF, Excel), IoT & Devices, Settings, audit log, backup/restore
+- [ ] Full Demo Controller, PWA, animation polish, responsive QA, docs, tests
 
-**Done when:** the demo script runs end to end without errors and all tests pass. Lighthouse results will be reported as measured.
+**Done when:** the demo script runs end to end from a fresh clone and all tests pass. Lighthouse will be reported as measured.
 
 ---
 
-## 9. Scope and cut line
-
-This is a very large spec, and the demo's quality matters more than its completeness. If time runs short, cut from the top of this list down:
-
-1. Postgres smoke test, Isolation Forest, satellite basemap
-2. Backup/restore UI, system health page, calendar view (keep kanban)
-3. Excel export (keep PDF), remaining report types beyond production and maintenance
-4. Full English coverage on secondary pages (keep Indonesian complete)
-5. PWA installability (keep the mobile-responsive `/m` route)
-
-**Never cut:** Dashboard, map, one full fault-to-verification loop, Demo Controller, AI disclaimers.
-
----
-
-## 10. Risks
+## 8. Risks
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | **Pitching in the evening means PV reads 0** and the energy flow goes flat. | The simulator's `simClock` can pin the demo to a chosen time, such as 10:15 WIB. The UI always shows sim time and "Data simulasi". |
-| R2 | **Venue Wi-Fi fails** and map tiles go blank. OpenFreeMap responded in my check, but it's still an external dependency. | Offline style showing gang polygons and assets on a plain background, with automatic fallback. Ship pre-recorded demo video as a final backup. |
-| R3 | **Fictional houses on a real map.** At placeholder coordinates, satellite imagery would show markers that don't match buildings. Points at a real RT could also look like real household data. | Use real coordinates only if the layout is adapted to them. Satellite stays optional. All owner names are fictional. |
-| R4 | **Lighthouse ≥ 90 on the dashboard** is hard with ECharts, a map and live updates. Accessibility is achievable; performance is less certain. | Lazy-load charts and the mini map below the fold, and batch SSE-driven renders. I'll report real numbers and won't tune the test to pass. |
-| R5 | **Laptop limits:** 8 GB RAM and 13 GB free disk (94% full). | Should be workable, but close heavy apps during builds and pitches. Consider freeing disk space before installing. |
-| R6 | **SQLite write contention** between ingest and reads. | WAL mode, batched writes at 5-minute boundaries. |
-| R7 | **Translation workload** across 12+ pages. | Keys from the start, Indonesian first, English filled in per phase. See cut line. |
+| R1 | **The demo now depends on the internet.** The earlier version ran fully offline, but login and history now need Supabase, and Docker isn't installed for a local copy | Test on a phone hotspot beforehand, record a backup video, and keep the earlier version available as an offline fallback |
+| R2 | **Free projects pause after 1 week of inactivity** | Open the project the day before, and run the fresh-clone check that morning |
+| R3 | Realtime fails or is slow at the venue | Automatic switch to SSE, with the live indicator showing which is in use |
+| R4 | Message quota (2 million per month). At a 5 s tick with 2 viewers, about 52,000 per day | Run the simulator only when needed, and show usage in system health |
+| R5 | Re-seeding daily over the network is slower than local SQLite | Batch inserts, and measure in Phase 2 |
+| R6 | Lighthouse ≥ 90 with aurora, isometric art, a map and charts | Lazy-load them, and report real numbers without tuning the test |
+| R7 | Laptop limits: 8 GB RAM, about 6 GB free disk | Free up space first (§1) |
+| R8 | **Scope.** Bigger than the earlier version: 2 mobile views, reports, 2 languages, RLS, 5 more pages | Build in order, keep each phase demo-ready, and use §9 if needed |
 
 ---
 
-## 11. Commands
+## 9. Cut line
+
+Applies if D1 is close. Cut from the top down:
+
+1. PWA install, Isolation Forest, satellite basemap, sound and haptics
+2. Backup/restore, system health widget, calendar view
+3. Excel export, then PDF beyond one report type
+4. English on secondary pages (Indonesian stays complete)
+5. Users CRUD (seeded accounts stay), asset registry editing in Settings
+6. Resident view `/r`, photo upload
+
+**Never cut:** landing page, dashboard with Pulse Score, map, one full fault-to-verification loop, Demo Controller, AI disclaimers, RLS on every table.
+
+**If the pitch really is on 7 November**, my recommendation is one of these:
+
+- **A. Rebrand and reshape:** SUNPULSE name and visual design, the 30-house topology, and the local database. Supabase comes after the pitch. Realistic in 2 days.
+- **B. Full Supabase rebuild with the cut list.** Doable, but it adds the internet dependency and leaves less time for rehearsal.
+
+I'd choose **A** for a 7 November pitch, and the full plan if there's more time.
+
+---
+
+## 10. Commands
 
 ```
 npm install && npm run db:setup && npm run dev   # terminal 1
 npm run simulate                                 # terminal 2
 npm run demo                                     # or both at once
 ```
-
-Environment variables are documented in `.env.example`. These include `DATABASE_PROVIDER`, `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXT_PUBLIC_MAP_CENTER_LAT`, `NEXT_PUBLIC_MAP_CENTER_LNG`, `NEXT_PUBLIC_MAP_ZOOM`, `ANTHROPIC_API_KEY`, `DEMO_MODE` and `SIM_CLOCK_MODE`.

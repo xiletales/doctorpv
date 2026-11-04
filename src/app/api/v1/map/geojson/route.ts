@@ -2,34 +2,35 @@ import { NextResponse } from "next/server";
 import { requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import type { MapData } from "@/lib/map-dto";
-import { canSeeOwnerName, gangScope } from "@/lib/rbac";
+import { canSeeOwnerName } from "@/lib/rbac";
 
 /** Registry geometry for the map. Live status is merged on the client from the SSE snapshot. */
 export const GET = route(async () => {
   const user = await requireUser();
-  const scope = gangScope(user);
-  const gangFilter = scope ? { in: scope } : undefined;
-  const [gangs, solar, batteries, gateways] = await Promise.all([
-    prisma.gang.findMany({ where: { id: gangFilter } }),
-    prisma.solarSystem.findMany({ where: { house: { gangId: gangFilter } }, include: { house: true } }),
-    prisma.battery.findMany({ where: { gangId: gangFilter } }),
-    prisma.gateway.findMany({ where: { gangId: gangFilter } }),
+  const [cluster, zones, solar, batteries, gateways] = await Promise.all([
+    prisma.cluster.findFirst(),
+    prisma.zone.findMany(),
+    prisma.solarSystem.findMany({ include: { house: true } }),
+    prisma.battery.findMany(),
+    prisma.gateway.findMany(),
   ]);
   const data: MapData = {
     center: {
-      lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? -6.9175),
-      lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? 107.6191),
-      zoom: Number(process.env.NEXT_PUBLIC_MAP_ZOOM ?? 16.6),
+      lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? -6.2),
+      lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? 106.8166),
+      zoom: Number(process.env.NEXT_PUBLIC_MAP_ZOOM ?? 18),
     },
-    gangs: gangs.map((g) => {
-      const extra = JSON.parse(g.alleyGeoJson) as { alley: [number, number][]; label: [number, number] };
-      return { id: g.id, name: g.name, boundary: JSON.parse(g.boundaryGeoJson) as [number, number][], alley: extra.alley, label: extra.label };
+    boundary: cluster ? (JSON.parse(cluster.boundaryGeoJson) as [number, number][]) : [],
+    zones: zones.map((g) => {
+      const extra = JSON.parse(g.roadGeoJson) as { road: [number, number][]; label: [number, number] };
+      return { id: g.id, name: g.name, boundary: JSON.parse(g.boundaryGeoJson) as [number, number][], road: extra.road, label: extra.label };
     }),
     houses: solar.map((s) => ({
       id: s.houseId,
-      gangId: s.house.gangId,
+      zoneId: s.house.zoneId,
       ownerCode: s.house.ownerCode,
-      ownerName: canSeeOwnerName(user, s.house.gangId) ? s.house.ownerName : null,
+      ownerName: canSeeOwnerName(user) ? s.house.ownerName : null,
+      batteryId: s.house.batteryId,
       address: s.house.address,
       lat: s.lat,
       lng: s.lng,
@@ -38,8 +39,8 @@ export const GET = route(async () => {
       inverterModel: s.inverterModel,
       installDate: s.installDate,
     })),
-    batteries: batteries.map((b) => ({ id: b.id, gangId: b.gangId, lat: b.lat, lng: b.lng, chemistry: b.chemistry, capacityKwh: b.nominalCapacityKwh, installDate: b.installDate })),
-    gateways: gateways.map((g) => ({ id: g.id, gangId: g.gangId, lat: g.lat, lng: g.lng, firmware: g.firmware })),
+    batteries: batteries.map((b) => ({ id: b.id, zoneId: b.zoneId, lat: b.lat, lng: b.lng, chemistry: b.chemistry, capacityKwh: b.nominalCapacityKwh, installDate: b.installDate })),
+    gateways: gateways.map((g) => ({ id: g.id, zoneId: g.zoneId, lat: g.lat, lng: g.lng, firmware: g.firmware })),
   };
   return NextResponse.json(data);
 });

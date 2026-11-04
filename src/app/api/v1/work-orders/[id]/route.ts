@@ -3,7 +3,6 @@ import { z } from "zod";
 import { ApiError, requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { live } from "@/lib/live/store";
-import { inScope } from "@/lib/rbac";
 import { simNow } from "@/lib/sim/time";
 
 const body = z.object({ status: z.enum(["in_progress", "done"]) });
@@ -15,7 +14,7 @@ export const PATCH = route(async (req: Request, ctx: { params: Promise<{ id: str
   if (!parsed.success) throw new ApiError(400, "Status tidak valid.");
   await live.init();
   const order = await prisma.workOrder.findUnique({ where: { id } });
-  if (!order || !inScope(user, order.gangId)) throw new ApiError(404, "Perintah kerja tidak ditemukan.");
+  if (!order) throw new ApiError(404, "Perintah kerja tidak ditemukan.");
   const done = parsed.data.status === "done";
   await prisma.workOrder.update({
     where: { id },

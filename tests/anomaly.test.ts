@@ -14,8 +14,8 @@ import { buildWorld } from "../src/lib/sim/world";
 const world = buildWorld({ lat: -6.9, lng: 107.6 });
 const demoDay = 20000;
 const today = dayStart(demoDay);
-const G = "G1";
-const house = (i: number) => world.houses.filter((h) => h.gangId === G)[i];
+const G = "ZA";
+const house = (i: number) => world.houses.filter((h) => h.zoneId === G)[i];
 
 interface Run {
   rows: Map<string, PvHourlyRow[]>;
@@ -38,13 +38,13 @@ function simulate(faults: Fault[]): Run {
       g += s.g / 4;
       amb += s.ambient / 4;
       for (const p of s.pv) {
-        if (p.gangId !== G) continue;
+        if (p.zoneId !== G) continue;
         const a = acc.get(p.id) ?? { w: 0, v: 0, i: 0, inv: "OK" };
         a.w += p.acW / 4; a.v += p.dcV / 4; a.i += p.dcI / 4; a.inv = p.inverter;
         acc.set(p.id, a);
       }
       for (const b of s.batteries) {
-        if (b.gangId !== G) continue;
+        if (b.zoneId !== G) continue;
         const day = wibDay(t);
         const m = batteries.get(b.id) ?? new Map<number, BatteryDaily>();
         const row = m.get(day) ?? { ts: dayStart(day), maxTempC: 0, maxSpreadMv: 0, peerMaxTempC: 0 };
@@ -72,7 +72,7 @@ function analysePv(run: Run, id: string) {
   const def = world.houses.find((h) => h.id === id)!;
   const peersByDay = new Map<number, number[]>();
   const pr = new Map<string, number>();
-  for (const h of world.houses.filter((x) => x.gangId === G)) {
+  for (const h of world.houses.filter((x) => x.zoneId === G)) {
     const rows = run.rows.get(h.id) ?? [];
     const base = baselinePr(rows, run.weather, h.capacityKwp);
     pr.set(h.id, base);
@@ -103,8 +103,8 @@ describe("anomaly detection on injected faults", () => {
     clean = simulate([]);
   });
 
-  it("raises nothing on a healthy gang", () => {
-    for (let i = 0; i < 20; i++) expect(analysePv(clean, house(i).id).anomalies).toHaveLength(0);
+  it("raises nothing on a healthy zone", () => {
+    for (let i = 0; i < 10; i++) expect(analysePv(clean, house(i).id).anomalies).toHaveLength(0);
     for (const id of clean.batteries.keys()) expect(analyseBattery(clean, id)).toHaveLength(0);
   });
 
@@ -139,13 +139,13 @@ describe("anomaly detection on injected faults", () => {
   });
 
   it("detects a battery thermal anomaly", () => {
-    const id = "B003";
+    const id = "B03";
     const a = analyseBattery(simulate([{ kind: "thermal", assetId: id, from: today - 8 * DAY, to: today - 7 * DAY, magnitude: 15 }]), id);
     expect(a.map((x) => x.pattern)).toContain("thermal");
   });
 
   it("detects battery cell imbalance", () => {
-    const id = "B005";
+    const id = "B05";
     const a = analyseBattery(simulate([{ kind: "imbalance", assetId: id, from: today - 10 * DAY, to: today - 6 * DAY, magnitude: 150 }]), id);
     expect(a.map((x) => x.pattern)).toContain("imbalance");
   });

@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import type { NavItem } from "@/lib/rbac";
 import { useUi } from "@/stores/ui";
 
-const pad = (n: number) => String(n).padStart(3, "0");
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export function CommandPalette({ items }: { items: NavItem[] }) {
   const open = useUi((s) => s.paletteOpen);
@@ -14,8 +14,8 @@ export function CommandPalette({ items }: { items: NavItem[] }) {
   const router = useRouter();
   const canSolar = items.some((i) => i.href === "/solar");
   const canBatt = items.some((i) => i.href === "/batteries");
-  const houses = useMemo(() => (canSolar ? Array.from({ length: 100 }, (_, i) => `H${pad(i + 1)}`) : []), [canSolar]);
-  const batteries = useMemo(() => (canBatt ? Array.from({ length: 50 }, (_, i) => `B${pad(i + 1)}`) : []), [canBatt]);
+  const houses = useMemo(() => (canSolar ? Array.from({ length: 30 }, (_, i) => `H${pad(i + 1)}`) : []), [canSolar]);
+  const batteries = useMemo(() => (canBatt ? Array.from({ length: 15 }, (_, i) => `B${pad(i + 1)}`) : []), [canBatt]);
 
   const go = (href: string) => {
     setOpen(false);
@@ -36,11 +36,11 @@ export function CommandPalette({ items }: { items: NavItem[] }) {
           <Command label="Pencarian cepat">
             <Command.Input
               autoFocus
-              placeholder="Ketik H021, B025, atau nama halaman"
+              placeholder="Ketik H21, B08, atau nama halaman"
               className="h-12 w-full border-b border-line bg-transparent px-4 text-sm text-ink outline-none placeholder:text-ink-3"
             />
             <Command.List className="max-h-80 overflow-y-auto p-2">
-              <Command.Empty className="px-3 py-6 text-center text-sm text-ink-3">Tidak ada hasil. Coba ID aset, misalnya H021.</Command.Empty>
+              <Command.Empty className="px-3 py-6 text-center text-sm text-ink-3">Tidak ada hasil. Coba ID aset, misalnya H21.</Command.Empty>
               <Command.Group heading="Halaman" className={head}>
                 {items.map((i) => (
                   <Command.Item key={i.href} value={i.label} onSelect={() => go(i.href)} className={row}>

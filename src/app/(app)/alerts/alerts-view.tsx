@@ -4,7 +4,7 @@ import { Check, CheckCheck, ChevronDown, ClipboardPlus, Hammer } from "lucide-re
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { GangFilter, inputClass, selectClass } from "@/components/domain/asset-parts";
+import { ZoneFilter, inputClass, selectClass } from "@/components/domain/asset-parts";
 import { useSessionUser } from "@/components/layout/session-context";
 import { can } from "@/lib/rbac";
 import { DisclaimerNote, EmptyState, ErrorState, PageTitle, PriorityBadge } from "@/components/domain/status";
@@ -93,7 +93,7 @@ function AlertRow({ a, onChange, busy }: { a: AlertDto; onChange: (id: string, s
           <span className="flex flex-wrap items-center gap-2">
             <PriorityBadge priority={a.priority} />
             <span className="num text-sm font-semibold text-ink">{a.assetId}</span>
-            <span className="text-xs text-ink-3">{ALERT_TYPE_LABEL[a.type]}, {a.gangId.replace("G", "Gang ")}</span>
+            <span className="text-xs text-ink-3">{ALERT_TYPE_LABEL[a.type]}, {a.zoneId.replace("Z", "Zona ")}</span>
           </span>
           <span className="mt-1 flex items-start gap-1 text-sm text-ink">
             {a.message}
@@ -139,7 +139,7 @@ function AlertRow({ a, onChange, busy }: { a: AlertDto; onChange: (id: string, s
 }
 
 export function AlertsView() {
-  const gangId = useUi((s) => s.gangId);
+  const zoneId = useUi((s) => s.zoneId);
   const qc = useQueryClient();
   const [priority, setPriority] = useState<AlertPriority | "">("");
   const [status, setStatus] = useState<"active" | AlertStatus | "">("active");
@@ -156,23 +156,23 @@ export function AlertsView() {
   const list = useMemo(() => {
     const s = search.trim().toLowerCase();
     return (all ?? []).filter((a) => {
-      if (gangId && a.gangId !== gangId) return false;
+      if (zoneId && a.zoneId !== zoneId) return false;
       if (priority && a.priority !== priority) return false;
       if (status === "active" && a.status === "resolved") return false;
       if (status && status !== "active" && a.status !== status) return false;
       return !s || a.assetId.toLowerCase().includes(s) || a.message.toLowerCase().includes(s);
     });
-  }, [all, gangId, priority, status, search]);
+  }, [all, zoneId, priority, status, search]);
   const openOnes = list.filter((a) => a.status === "open");
 
   return (
     <div className="space-y-4 p-4 md:p-6">
       <PageTitle title="Pusat alert" description="Alert baru masuk langsung dan muncul sebagai notifikasi di semua halaman." />
       {q.isError ? <Card><ErrorState message={(q.error as Error).message} /></Card> : null}
-      {all ? <Stats alerts={all.filter((a) => !gangId || a.gangId === gangId)} /> : <Skeleton className="h-20 rounded-2xl" />}
+      {all ? <Stats alerts={all.filter((a) => !zoneId || a.zoneId === zoneId)} /> : <Skeleton className="h-20 rounded-2xl" />}
       <div className="flex flex-wrap items-center gap-2">
         <input aria-label="Cari alert" placeholder="Cari aset atau pesan" value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
-        <GangFilter />
+        <ZoneFilter />
         <label htmlFor="priority-filter" className="sr-only">Prioritas</label>
         <select id="priority-filter" value={priority} onChange={(e) => setPriority(e.target.value as AlertPriority | "")} className={selectClass}>
           <option value="">Semua prioritas</option>

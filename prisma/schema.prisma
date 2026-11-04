@@ -16,25 +16,22 @@ model User {
   role         String
   active       Boolean    @default(true)
   createdAt    Int
-  gangs        UserGang[]
+  houseId      String?
 }
 
-model UserGang {
-  userId String
-  gangId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gang   Gang   @relation(fields: [gangId], references: [id], onDelete: Cascade)
-
-  @@id([userId, gangId])
+model Cluster {
+  id              String @id
+  name            String
+  boundaryGeoJson String
 }
 
-model Gang {
+/// A gateway coverage area. An infrastructure concept, not an administrative unit.
+model Zone {
   id              String     @id
   name            String
   code            String
   boundaryGeoJson String
-  alleyGeoJson    String
-  users           UserGang[]
+  roadGeoJson     String
   houses          House[]
   batteries       Battery[]
   gateways        Gateway[]
@@ -42,13 +39,15 @@ model Gang {
 
 model House {
   id        String       @id
-  gangId    String
+  zoneId    String
   ownerCode String
   ownerName String
   address   String
   lat       Float
   lng       Float
-  gang      Gang         @relation(fields: [gangId], references: [id])
+  batteryId String
+  gatewayId String
+  zone      Zone         @relation(fields: [zoneId], references: [id])
   solar     SolarSystem?
 }
 
@@ -70,7 +69,7 @@ model SolarSystem {
 
 model Battery {
   id                 String  @id
-  gangId             String
+  zoneId             String
   chemistry          String
   nominalCapacityKwh Float
   nominalVoltage     Float
@@ -78,16 +77,16 @@ model Battery {
   lat                Float
   lng                Float
   registryStatus     String  @default("active")
-  gang               Gang    @relation(fields: [gangId], references: [id])
+  zone               Zone    @relation(fields: [zoneId], references: [id])
 }
 
 model Gateway {
   id       String @id
-  gangId   String
+  zoneId   String
   firmware String
   lat      Float
   lng      Float
-  gang     Gang   @relation(fields: [gangId], references: [id])
+  zone     Zone   @relation(fields: [zoneId], references: [id])
 }
 
 model SolarTelemetry {
@@ -150,7 +149,7 @@ model AiPrediction {
   id           String @id
   assetType    String
   assetId      String
-  gangId       String
+  zoneId       String
   kind         String
   payloadJson  String
   confidence   Float
@@ -167,7 +166,7 @@ model Alert {
   id                String  @id
   assetType         String
   assetId           String
-  gangId            String
+  zoneId            String
   type              String
   priority          String
   message           String
@@ -187,7 +186,7 @@ model WorkOrder {
   id        String @id
   assetType String
   assetId   String
-  gangId    String
+  zoneId    String
   source    String
   priority  String
   status    String

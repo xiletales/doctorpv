@@ -1,6 +1,6 @@
 import { median, robustZ } from "./stats";
 
-export const MODEL_VERSION = "doctorpv-ensemble-0.3";
+export const MODEL_VERSION = "sunpulse-ensemble-0.4";
 
 export type AnomalyMethod = "residual" | "robust_z" | "peer" | "stuck_value" | "range" | "threshold";
 
@@ -8,7 +8,7 @@ export interface DailyPoint {
   ts: number;
   /** Actual energy divided by the expected energy from irradiance. */
   ratio: number;
-  /** The same ratio for the median peer house in the gang on the same day. */
+  /** The same ratio for the median peer house in the cluster on the same day. */
   peerRatio: number;
   reportedZeroHours: number;
   sunHours: number;
@@ -34,7 +34,7 @@ function severityFor(deviationPct: number): Anomaly["severity"] {
 
 /**
  * PV ensemble on daily performance. A day is anomalous when the residual against expected
- * energy and the comparison with gang peers agree, or when the robust z-score is extreme.
+ * energy and the comparison with cluster peers agree, or when the robust z-score is extreme.
  * Peer agreement stops overcast days being read as a fault, because all houses share the weather.
  */
 export function detectPvAnomalies(days: DailyPoint[], residualLimit = 0.12, minRun = 1): Anomaly[] {
@@ -108,7 +108,8 @@ export function detectBatteryAnomalies(days: BatteryDaily[]): Anomaly[] {
     if (start >= 0) out.push(make(days.slice(start)));
   };
   scan(
-    (d) => robustZ(d.maxTempC - d.peerMaxTempC, temps, 0.5) > 3.5 && d.maxTempC - d.peerMaxTempC > 4,
+    // Batteries serving larger PV pairs carry more current and run a few degrees warmer, which is normal.
+    (d) => robustZ(d.maxTempC - d.peerMaxTempC, temps, 0.5) > 3.5 && d.maxTempC - d.peerMaxTempC > 7,
     (run) => {
       const peak = Math.max(...run.map((d) => d.maxTempC - d.peerMaxTempC));
       return {

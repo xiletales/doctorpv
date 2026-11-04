@@ -5,7 +5,7 @@ export interface AnomalyDto {
   id: string;
   assetType: string;
   assetId: string;
-  gangId: string;
+  zoneId: string;
   confidence: number;
   modelVersion: string;
   alertId: string | null;
@@ -25,7 +25,7 @@ export interface AnomalySeries {
 export interface HealthRow {
   id: string;
   type: "pv" | "battery";
-  gangId: string;
+  zoneId: string;
   status: string;
   score: HealthScore;
 }

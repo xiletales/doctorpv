@@ -3,8 +3,8 @@ import { DisclaimerNote, PageTitle } from "@/components/domain/status";
 import { Card } from "@/components/ui/card";
 
 const PIPELINE = [
-  { title: "Sensor dan BMS", body: "PV, baterai, dan meter energi di tiap gang" },
-  { title: "Gateway", body: "Satu per gang, menampung data saat internet putus" },
+  { title: "Sensor dan BMS", body: "PV, baterai, dan meter energi di tiap rumah" },
+  { title: "Gateway", body: "Satu per zona, menampung data saat internet putus" },
   { title: "Ingest", body: "Kunci per gateway, validasi skema, dan buang duplikat" },
   { title: "Mesin analisis", body: "Alert, deteksi anomali, diagnosis, dan skor kesehatan" },
   { title: "Dasbor", body: "Pembaruan langsung lewat SSE, dibatasi menurut peran" },
@@ -21,7 +21,7 @@ const LOOP = [
 export default function AboutPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <PageTitle title="Arsitektur sistem" description="DOCTOR PV mengelola energi komunitas satu RT: 5 gang, 100 rumah dengan PV atap, 50 baterai bersama, dan 5 gateway IoT." />
+      <PageTitle title="Arsitektur sistem" description="SUNPULSE mengelola energi hibrida PLTS, baterai, dan PLN pada satu klaster permukiman: 30 rumah dengan PV atap, 15 baterai bersama, dan 3 gateway IoT." />
 
       <section aria-labelledby="flow-title">
         <h2 id="flow-title" className="text-sm font-semibold text-ink">Perjalanan data</h2>

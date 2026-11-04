@@ -19,15 +19,15 @@ import { cn } from "@/lib/utils";
 export const selectClass = "h-9 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink outline-none focus:border-primary";
 export const inputClass = "h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-primary sm:w-56";
 
-export function GangFilter() {
-  const gangId = useUi((s) => s.gangId);
-  const setGang = useUi((s) => s.setGang);
+export function ZoneFilter() {
+  const zoneId = useUi((s) => s.zoneId);
+  const setZone = useUi((s) => s.setZone);
   return (
     <>
-      <label htmlFor="gang-filter" className="sr-only">Filter gang</label>
-      <select id="gang-filter" value={gangId ?? ""} onChange={(e) => setGang(e.target.value || null)} className={selectClass}>
-        <option value="">Semua gang</option>
-        {[1, 2, 3, 4, 5].map((n) => <option key={n} value={`G${n}`}>Gang {n}</option>)}
+      <label htmlFor="zone-filter" className="sr-only">Filter zona</label>
+      <select id="zone-filter" value={zoneId ?? ""} onChange={(e) => setZone(e.target.value || null)} className={selectClass}>
+        <option value="">Semua zona</option>
+        {["A", "B", "C"].map((n) => <option key={n} value={`Z${n}`}>Zona {n}</option>)}
       </select>
     </>
   );

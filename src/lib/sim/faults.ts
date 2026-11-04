@@ -22,18 +22,18 @@ export interface Fault {
 /** The default demo state relative to the start of today (WIB). */
 export function defaultFaults(today: number): Fault[] {
   return [
-    // Active: these define Gang 2 Waspada, Gang 3 Kritis and the offline device in Gang 4.
-    { kind: "soiling", assetId: "H027", from: today - 21 * DAY, magnitude: 0.68 },
-    { kind: "inverter_trip", assetId: "H047", from: today + 8.67 * 3600 },
-    { kind: "imbalance", assetId: "B028", from: today - 5 * DAY, magnitude: 165 },
-    { kind: "device_offline", assetId: "H066", from: today - DAY + 14 * 3600 },
+    // Active: mostly normal, with these 4 issues the cluster overall reads Waspada.
+    { kind: "soiling", assetId: "H07", from: today - 21 * DAY, magnitude: 0.68 },
+    // The shaded hours cover 10:15, so that the case is visible while the clock is locked.
+    { kind: "shading", assetId: "H13", from: today - 9 * DAY, magnitude: 0.35, hours: [9, 11.5] },
+    { kind: "thermal", assetId: "B11", from: today - 3 * DAY, magnitude: 16 },
+    { kind: "device_offline", assetId: "H26", from: today - DAY + 14 * 3600 },
     // History: already over, so they appear only as past anomalies.
-    { kind: "soiling", assetId: "H083", from: today - 29 * DAY, to: today - 13 * DAY, magnitude: 0.7 },
-    { kind: "shading", assetId: "H012", from: today - 17 * DAY, to: today - 11 * DAY, magnitude: 0.4, hours: [13, 15.5] },
-    { kind: "sensor_stuck_zero", assetId: "H072", from: today - 9 * DAY, to: today - 8 * DAY + 6 * 3600 },
-    { kind: "inverter_trip", assetId: "H034", from: today - 24 * DAY, to: today - 22 * DAY },
-    { kind: "thermal", assetId: "B007", from: today - 20 * DAY, to: today - 19 * DAY, magnitude: 15 },
-    { kind: "imbalance", assetId: "B016", from: today - 15 * DAY, to: today - 12 * DAY, magnitude: 150 },
+    { kind: "inverter_trip", assetId: "H04", from: today - 24 * DAY, to: today - 22 * DAY },
+    { kind: "soiling", assetId: "H23", from: today - 29 * DAY, to: today - 13 * DAY, magnitude: 0.7 },
+    { kind: "sensor_stuck_zero", assetId: "H18", from: today - 9 * DAY, to: today - 8 * DAY + 6 * 3600 },
+    { kind: "thermal", assetId: "B03", from: today - 20 * DAY, to: today - 19 * DAY, magnitude: 15 },
+    { kind: "imbalance", assetId: "B13", from: today - 15 * DAY, to: today - 12 * DAY, magnitude: 150 },
   ];
 }
 

@@ -113,6 +113,7 @@ export function SolarDetailView({ id }: { id: string }) {
                 <div><dt className="text-xs text-ink-3">Inverter</dt><dd className="text-ink">{d.inverterModel}</dd></div>
                 <div><dt className="text-xs text-ink-3">Orientasi</dt><dd className="num text-ink">Tilt {d.tilt}°, azimut {d.azimuth}°</dd></div>
                 <div><dt className="text-xs text-ink-3">Dipasang</dt><dd className="text-ink">{longDate(d.installDate)}</dd></div>
+                <div><dt className="text-xs text-ink-3">Baterai</dt><dd className="num text-ink">{d.batteryId}</dd></div>
                 <div><dt className="text-xs text-ink-3">PR historis</dt><dd className="num text-ink">{num(d.baselinePr * 100, 1)}%</dd></div>
               </dl>
             </Card>

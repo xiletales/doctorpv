@@ -6,7 +6,7 @@ export interface AlertDto {
   id: string;
   assetType: string;
   assetId: string;
-  gangId: string;
+  zoneId: string;
   type: AlertType;
   priority: AlertPriority;
   message: string;

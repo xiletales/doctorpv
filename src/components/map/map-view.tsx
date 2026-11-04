@@ -43,7 +43,9 @@ function schematicStyle(dark: boolean): StyleSpecification {
   };
 }
 
-const GANG_FILL = ["#10b981", "#0ea5e9", "#f59e0b", "#8b5cf6", "#14b8a6"];
+const ZONE_FILL = ["#10b981", "#0ea5e9", "#f59e0b"];
+/** 30 points fit at any useful zoom, so clustering is off. Turn it on here for a larger site. */
+const CLUSTERING = false;
 const STATUSES: AssetStatus[] = ["normal", "warning", "critical", "offline", "maintenance"];
 
 function matches(status: AssetStatus, filter: StatusFilter): boolean {
@@ -89,7 +91,7 @@ function DrawerShell({ title, subtitle, status, onClose, children, href }: { tit
       exit={{ x: 32, opacity: 0 }}
       transition={{ duration: 0.18 }}
       aria-label={`Detail ${title}`}
-      className="absolute inset-y-3 right-3 z-20 flex w-[min(360px,calc(100%-24px))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-xl"
+      className="absolute inset-y-3 right-3 z-20 flex w-[min(360px,calc(100%-24px))] flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-xl"
     >
       <div className="flex items-start justify-between gap-2 border-b border-line p-4">
         <div>
@@ -109,7 +111,7 @@ function DrawerShell({ title, subtitle, status, onClose, children, href }: { tit
 
 function HouseDrawer({ house, live, onClose }: { house: MapHouse; live?: PvLive; onClose: () => void }) {
   return (
-    <DrawerShell title={house.id} subtitle={`${house.gangId.replace("G", "Gang ")}, ${house.address}`} status={live?.status ?? "offline"} onClose={onClose} href={`/solar/${house.id}`}>
+    <DrawerShell title={house.id} subtitle={`${house.zoneId.replace("Z", "Zona ")}, ${house.address}`} status={live?.status ?? "offline"} onClose={onClose} href={`/solar/${house.id}`}>
       <HealthScoreRing score={live?.health ?? 0} />
       <dl className="divide-y divide-line">
         <Row label="Daya saat ini" value={<span className="num">{num((live?.acW ?? 0) / 1000, 2)} kW</span>} />
@@ -117,6 +119,7 @@ function HouseDrawer({ house, live, onClose }: { house: MapHouse; live?: PvLive;
         <Row label="Terhadap ekspektasi" value={<span className="num">{num((live?.ratio ?? 0) * 100, 0)}%</span>} />
         <Row label="Kapasitas PV" value={<span className="num">{num(house.capacityKwp, 2)} kWp</span>} />
         <Row label="Inverter" value={`${house.inverterModel}, ${live?.inverter ?? "–"}`} />
+        <Row label="Baterai" value={<span className="num">{house.batteryId}</span>} />
         <Row label="Pemilik" value={house.ownerName ?? house.ownerCode} />
         <Row label="Koordinat" value={<span className="num text-xs">{num(house.lat, 5)}, {num(house.lng, 5)}</span>} />
         <Row label="Pemasangan" value={longDate(house.installDate)} />
@@ -126,15 +129,16 @@ function HouseDrawer({ house, live, onClose }: { house: MapHouse; live?: PvLive;
   );
 }
 
-function BatteryDrawer({ battery, live, onClose }: { battery: MapBattery; live?: BatteryLive; onClose: () => void }) {
+function BatteryDrawer({ battery, live, served, onClose }: { battery: MapBattery; live?: BatteryLive; served: string[]; onClose: () => void }) {
   return (
-    <DrawerShell title={battery.id} subtitle={`${battery.gangId.replace("G", "Gang ")}, ${battery.chemistry} ${num(battery.capacityKwh, 2)} kWh`} status={live?.status ?? "offline"} onClose={onClose} href={`/batteries/${battery.id}`}>
+    <DrawerShell title={battery.id} subtitle={`${battery.zoneId.replace("Z", "Zona ")}, ${battery.chemistry} ${num(battery.capacityKwh, 2)} kWh`} status={live?.status ?? "offline"} onClose={onClose} href={`/batteries/${battery.id}`}>
       <HealthScoreRing score={live?.health ?? 0} />
       <div>
         <div className="mb-1 flex justify-between text-sm"><span className="text-ink-3">State of Charge</span><span className="num text-ink">{num(live?.soc, 1)}%</span></div>
         <LevelBar value={live?.soc ?? 0} label="State of Charge" />
       </div>
       <dl className="divide-y divide-line">
+        <Row label="Melayani" value={<span className="num">{served.join(", ")}</span>} />
         <Row label="SoH" value={<span className="num">{num(live?.soh, 1)}%</span>} />
         <Row label="Suhu" value={<span className="num">{num(live?.tempC, 1)} °C</span>} />
         <Row label="Tegangan" value={<span className="num">{num(live?.voltage, 1)} V</span>} />
@@ -151,7 +155,7 @@ function BatteryDrawer({ battery, live, onClose }: { battery: MapBattery; live?:
 
 function GatewayDrawer({ gateway, live, onClose }: { gateway: MapGateway; live?: GatewayLive; onClose: () => void }) {
   return (
-    <DrawerShell title={gateway.id} subtitle={`Gateway ${gateway.gangId.replace("G", "Gang ")}`} status={live?.online === false ? "offline" : "normal"} onClose={onClose}>
+    <DrawerShell title={gateway.id} subtitle={`Gateway ${gateway.zoneId.replace("Z", "Zona ")}`} status={live?.online === false ? "offline" : "normal"} onClose={onClose}>
       <dl className="divide-y divide-line">
         <Row label="Koneksi" value={live?.online === false ? "Terputus" : "Tersambung"} />
         <Row label="Estimasi antrean buffer" value={<span className="num">{num(live?.bufferEstimate ?? 0)} pesan</span>} />
@@ -176,9 +180,9 @@ export function MapView() {
   const snapshot = useLive((s) => s.snapshot);
   const [basemap, setBasemap] = useState<Basemap | "auto">("auto");
   const [tilesReachable, setTilesReachable] = useState<boolean | null>(null);
-  const [layers, setLayers] = useState({ gangs: true, houses: true, batteries: true, gateways: true, heat: false, alerts: true });
+  const [layers, setLayers] = useState({ zones: true, houses: true, batteries: true, gateways: true, links: true, heat: false, alerts: true });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [focusGang, setFocusGang] = useState<string | null>(null);
+  const [focusZone, setFocusZone] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selected>(null);
   const [loaded, setLoaded] = useState(false);
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
@@ -250,14 +254,27 @@ export function MapView() {
     }),
   }), [q.data, gwById]);
 
-  const gangPolys = useMemo<FeatureCollection<Polygon>>(() => ({
+  const zonePolys = useMemo<FeatureCollection<Polygon>>(() => ({
     type: "FeatureCollection",
-    features: (q.data?.gangs ?? []).map((g, i): Feature<Polygon> => ({ type: "Feature", geometry: { type: "Polygon", coordinates: [g.boundary] }, properties: { id: g.id, color: GANG_FILL[i % GANG_FILL.length] } })),
+    features: (q.data?.zones ?? []).map((g, i): Feature<Polygon> => ({ type: "Feature", geometry: { type: "Polygon", coordinates: [g.boundary] }, properties: { id: g.id, color: ZONE_FILL[i % ZONE_FILL.length] } })),
+  }), [q.data]);
+
+  const links = useMemo<FeatureCollection<LineString>>(() => ({
+    type: "FeatureCollection",
+    features: (q.data?.houses ?? []).flatMap((h): Feature<LineString>[] => {
+      const b = q.data?.batteries.find((x) => x.id === h.batteryId);
+      return b ? [{ type: "Feature", geometry: { type: "LineString", coordinates: [[h.lng, h.lat], [b.lng, b.lat]] }, properties: {} }] : [];
+    }),
+  }), [q.data]);
+
+  const boundary = useMemo<FeatureCollection<Polygon>>(() => ({
+    type: "FeatureCollection",
+    features: [{ type: "Feature", geometry: { type: "Polygon", coordinates: [q.data?.boundary ?? []] }, properties: {} }],
   }), [q.data]);
 
   const alleys = useMemo<FeatureCollection<LineString>>(() => ({
     type: "FeatureCollection",
-    features: (q.data?.gangs ?? []).map((g): Feature<LineString> => ({ type: "Feature", geometry: { type: "LineString", coordinates: g.alley }, properties: {} })),
+    features: (q.data?.zones ?? []).map((g): Feature<LineString> => ({ type: "Feature", geometry: { type: "LineString", coordinates: g.road }, properties: {} })),
   }), [q.data]);
 
   const counts = useMemo(() => {
@@ -281,10 +298,10 @@ export function MapView() {
     return out;
   }, [q.data, pvById, battById, layers.alerts]);
 
-  const flyToGang = useCallback((id: string | null) => {
+  const flyToZone = useCallback((id: string | null) => {
     const map = mapRef.current;
     if (!map || !q.data) return;
-    const list = id ? q.data.gangs.filter((g) => g.id === id) : q.data.gangs;
+    const list = id ? q.data.zones.filter((g) => g.id === id) : q.data.zones;
     const coords = list.flatMap((g) => g.boundary);
     if (coords.length === 0) return;
     const lngs = coords.map((c) => c[0]);
@@ -293,8 +310,8 @@ export function MapView() {
   }, [q.data]);
 
   useEffect(() => {
-    if (loaded) flyToGang(focusGang);
-  }, [focusGang, loaded, flyToGang]);
+    if (loaded) flyToZone(focusZone);
+  }, [focusZone, loaded, flyToZone]);
 
   // Deep link: /map?asset=H021 selects the asset and flies to it.
   const assetParam = search.get("asset");
@@ -306,7 +323,7 @@ export function MapView() {
     if (!target) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected({ kind: h ? "house" : "battery", id: assetParam });
-    mapRef.current?.flyTo({ center: [target.lng, target.lat], zoom: 17.6, duration: 900, offset: [-180, 0] });
+    mapRef.current?.flyTo({ center: [target.lng, target.lat], zoom: 18.4, duration: 900, offset: [-180, 0] });
   }, [assetParam, q.data, loaded]);
 
   const onClick = useCallback((e: MapLayerMouseEvent) => {
@@ -346,7 +363,8 @@ export function MapView() {
   const selGw = selected?.kind === "gateway" ? q.data.gateways.find((g) => g.id === selected.id) : undefined;
 
   const layerToggles: { key: keyof typeof layers; label: string }[] = [
-    { key: "gangs", label: "Batas gang" },
+    { key: "zones", label: "Batas zona" },
+    { key: "links", label: "Baterai ke rumah" },
     { key: "houses", label: "Rumah dan PV" },
     { key: "batteries", label: "Baterai" },
     { key: "gateways", label: "Gateway" },
@@ -371,15 +389,26 @@ export function MapView() {
         <NavigationControl position="bottom-left" showCompass={false} />
         <ScaleControl position="bottom-left" />
 
-        {loaded && layers.gangs ? (
-          <Source id="gangs" type="geojson" data={gangPolys}>
-            <Layer id="gang-fill" type="fill" paint={{ "fill-color": ["get", "color"], "fill-opacity": dark ? 0.12 : 0.14 }} />
-            <Layer id="gang-line" type="line" paint={{ "line-color": ["get", "color"], "line-width": 1.5, "line-opacity": 0.75 }} />
+        {loaded && layers.zones ? (
+          <Source id="zones" type="geojson" data={zonePolys}>
+            <Layer id="zone-fill" type="fill" paint={{ "fill-color": ["get", "color"], "fill-opacity": dark ? 0.12 : 0.14 }} />
+            <Layer id="zone-line" type="line" paint={{ "line-color": ["get", "color"], "line-width": 1.5, "line-opacity": 0.75 }} />
           </Source>
         ) : null}
         {loaded ? (
           <Source id="alleys" type="geojson" data={alleys}>
             <Layer id="alley-line" type="line" paint={{ "line-color": dark ? "#475569" : "#94a3b8", "line-width": 5, "line-opacity": 0.65 }} layout={{ "line-cap": "round" }} />
+          </Source>
+        ) : null}
+
+        {loaded ? (
+          <Source id="cluster-boundary" type="geojson" data={boundary}>
+            <Layer id="cluster-line" type="line" paint={{ "line-color": "#f97316", "line-width": 2, "line-dasharray": [3, 2] }} />
+          </Source>
+        ) : null}
+        {loaded && layers.links ? (
+          <Source id="battery-links" type="geojson" data={links}>
+            <Layer id="battery-link-line" type="line" paint={{ "line-color": "#10b981", "line-width": 1.5, "line-opacity": 0.7, "line-dasharray": [1, 2] }} />
           </Source>
         ) : null}
 
@@ -400,17 +429,17 @@ export function MapView() {
         ) : null}
 
         {loaded && layers.houses ? (
-          <Source id="houses" type="geojson" data={houses} cluster clusterMaxZoom={14} clusterRadius={46}>
+          <Source id="houses" type="geojson" data={houses} cluster={CLUSTERING} clusterMaxZoom={14} clusterRadius={46}>
             <Layer id="house-clusters" type="circle" filter={clusterFilter} paint={{ "circle-color": "#047857", "circle-radius": ["step", ["get", "point_count"], 14, 10, 18, 40, 24], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" }} />
             {effective !== "schematic" ? (
               <Layer id="house-cluster-count" type="symbol" filter={clusterFilter} layout={{ "text-field": ["get", "point_count_abbreviated"], "text-size": 12, "text-font": ["Noto Sans Bold"] }} paint={{ "text-color": "#ffffff" }} />
             ) : null}
-            <Layer id="house-points" type="symbol" filter={pointFilter} layout={{ "icon-image": ["get", "icon"], "icon-size": ["interpolate", ["linear"], ["zoom"], 15, 0.55, 18, 1.05], "icon-allow-overlap": true }} />
+            <Layer id="house-points" type="symbol" filter={pointFilter} layout={{ "icon-image": ["get", "icon"], "icon-size": ["interpolate", ["linear"], ["zoom"], 15, 0.55, 18, 1.15], "icon-allow-overlap": true }} />
           </Source>
         ) : null}
 
         {loaded && layers.batteries ? (
-          <Source id="batteries" type="geojson" data={batteries} cluster clusterMaxZoom={14} clusterRadius={46}>
+          <Source id="batteries" type="geojson" data={batteries} cluster={CLUSTERING} clusterMaxZoom={14} clusterRadius={46}>
             <Layer id="battery-clusters" type="circle" filter={clusterFilter} paint={{ "circle-color": "#0369a1", "circle-radius": ["step", ["get", "point_count"], 12, 10, 16, 30, 20], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" }} />
             {effective !== "schematic" ? (
               <Layer id="battery-cluster-count" type="symbol" filter={clusterFilter} layout={{ "text-field": ["get", "point_count_abbreviated"], "text-size": 11, "text-font": ["Noto Sans Bold"] }} paint={{ "text-color": "#ffffff" }} />
@@ -421,13 +450,13 @@ export function MapView() {
 
         {loaded && layers.gateways ? (
           <Source id="gateways" type="geojson" data={gateways}>
-            <Layer id="gateway-points" type="symbol" layout={{ "icon-image": ["get", "icon"], "icon-size": ["interpolate", ["linear"], ["zoom"], 15, 0.55, 18, 1.05], "icon-allow-overlap": true }} />
+            <Layer id="gateway-points" type="symbol" layout={{ "icon-image": ["get", "icon"], "icon-size": ["interpolate", ["linear"], ["zoom"], 15, 0.55, 18, 1.15], "icon-allow-overlap": true }} />
           </Source>
         ) : null}
 
-        {layers.gangs ? q.data.gangs.map((g) => (
+        {layers.zones ? q.data.zones.map((g) => (
           <Marker key={g.id} longitude={g.label[0]} latitude={g.label[1]} anchor="center">
-            <button type="button" onClick={() => setFocusGang(focusGang === g.id ? null : g.id)} className="rounded-md border border-line bg-surface/90 px-1.5 py-0.5 text-[11px] font-semibold text-ink shadow-sm">{g.name}</button>
+            <button type="button" onClick={() => setFocusZone(focusZone === g.id ? null : g.id)} className="rounded-md border border-line bg-surface/90 px-1.5 py-0.5 text-[11px] font-semibold text-ink shadow-sm">{g.name}</button>
           </Marker>
         )) : null}
 
@@ -444,10 +473,10 @@ export function MapView() {
           <button key={k} type="button" aria-pressed={statusFilter === k} className={chip(statusFilter === k)} onClick={() => setStatusFilter(k)}>{label}</button>
         ))}
         <span className="mx-1 hidden h-4 w-px bg-line sm:block" aria-hidden />
-        <label className="sr-only" htmlFor="gang-focus">Fokus gang</label>
-        <select id="gang-focus" value={focusGang ?? ""} onChange={(e) => setFocusGang(e.target.value || null)} className="rounded-lg bg-transparent px-1.5 py-1 text-xs font-medium text-ink outline-none">
-          <option value="">Semua gang</option>
-          {q.data.gangs.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        <label className="sr-only" htmlFor="zone-focus">Fokus zona</label>
+        <select id="zone-focus" value={focusZone ?? ""} onChange={(e) => setFocusZone(e.target.value || null)} className="rounded-lg bg-transparent px-1.5 py-1 text-xs font-medium text-ink outline-none">
+          <option value="">Semua zona</option>
+          {q.data.zones.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </div>
 
@@ -501,7 +530,7 @@ export function MapView() {
 
       <AnimatePresence>
         {selHouse ? <HouseDrawer key={selHouse.id} house={selHouse} live={pvById.get(selHouse.id)} onClose={() => setSelected(null)} /> : null}
-        {selBatt ? <BatteryDrawer key={selBatt.id} battery={selBatt} live={battById.get(selBatt.id)} onClose={() => setSelected(null)} /> : null}
+        {selBatt ? <BatteryDrawer key={selBatt.id} battery={selBatt} live={battById.get(selBatt.id)} served={q.data.houses.filter((h) => h.batteryId === selBatt.id).map((h) => h.id)} onClose={() => setSelected(null)} /> : null}
         {selGw ? <GatewayDrawer key={selGw.id} gateway={selGw} live={gwById.get(selGw.id)} onClose={() => setSelected(null)} /> : null}
       </AnimatePresence>
     </div>

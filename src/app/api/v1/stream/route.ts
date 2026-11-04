@@ -4,7 +4,7 @@ import { live } from "@/lib/live/store";
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (req: Request) => {
-  const user = await requireUser();
+  await requireUser();
   await live.init();
   const encoder = new TextEncoder();
   let cleanup = () => {};
@@ -19,8 +19,8 @@ export const GET = route(async (req: Request) => {
           cleanup();
         }
       };
-      send("snapshot", live.snapshot(user));
-      const unsubscribe = live.subscribe(user, send);
+      send("snapshot", live.snapshot());
+      const unsubscribe = live.subscribe(send);
       const beat = setInterval(() => {
         if (closed) return;
         try {

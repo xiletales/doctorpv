@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { axisTooltip, EChart, grid, legend, timeAxis, tooltip, useChartTheme, valueAxis } from "@/components/charts/echart";
-import { GangFilter, inputClass, selectClass } from "@/components/domain/asset-parts";
+import { ZoneFilter, inputClass, selectClass } from "@/components/domain/asset-parts";
 import { ConfidenceBar } from "@/components/domain/confidence-bar";
 import { DataTable } from "@/components/domain/data-table";
 import { HealthScoreRing } from "@/components/domain/health-ring";
@@ -99,7 +99,7 @@ function DiagnosisCard({ a }: { a: AnomalyDto }) {
           {path ? <Link href={path} className="num hover:underline">{a.assetId}</Link> : <span className="num">{a.assetId}</span>}: {a.payload.title}
         </p>
         <p className="mt-0.5 text-xs text-ink-3">
-          {a.gangId.replace("G", "Gang ")}, sejak {dateTime(a.payload.from)}, {a.payload.open ? "masih berlangsung" : "sudah berakhir"}
+          {a.zoneId.replace("Z", "Zona ")}, sejak {dateTime(a.payload.from)}, {a.payload.open ? "masih berlangsung" : "sudah berakhir"}
         </p>
       </div>
       <div className="space-y-5 p-5">
@@ -148,20 +148,20 @@ function DiagnosisCard({ a }: { a: AnomalyDto }) {
 function AnomalyTab() {
   const params = useSearchParams();
   const router = useRouter();
-  const gangId = useUi((s) => s.gangId);
+  const zoneId = useUi((s) => s.zoneId);
   const q = useQuery({ queryKey: ["ai", "anomalies"], queryFn: () => apiGet<{ anomalies: AnomalyDto[] }>("/api/v1/ai/anomalies") });
-  const list = useMemo(() => (q.data?.anomalies ?? []).filter((a) => !gangId || a.gangId === gangId), [q.data, gangId]);
+  const list = useMemo(() => (q.data?.anomalies ?? []).filter((a) => !zoneId || a.zoneId === zoneId), [q.data, zoneId]);
   const selectedId = params.get("id");
   const selected = list.find((a) => a.id === selectedId) ?? list[0];
 
   if (q.isError) return <Card><ErrorState message={(q.error as Error).message} /></Card>;
   if (!q.data) return <Skeleton className="h-96 rounded-2xl" />;
-  if (list.length === 0) return <Card><EmptyState title="Tidak ada anomali untuk gang ini" hint="Pilih gang lain atau tampilkan semua gang." /></Card>;
+  if (list.length === 0) return <Card><EmptyState title="Tidak ada anomali untuk zona ini" hint="Pilih zona lain atau tampilkan semua zona." /></Card>;
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(320px,2fr)_3fr]">
       <Card className="xl:sticky xl:top-4">
-        <CardHeader title={`${list.length} anomali terdeteksi`} description={`${list.filter((a) => a.payload.open).length} masih berlangsung`} action={<GangFilter />} />
+        <CardHeader title={`${list.length} anomali terdeteksi`} description={`${list.filter((a) => a.payload.open).length} masih berlangsung`} action={<ZoneFilter />} />
         <ul className="mt-3 max-h-[calc(100dvh-16rem)] divide-y divide-line overflow-y-auto">
           {list.map((a) => {
             const top = a.payload.diagnosis?.causes[0];
@@ -199,7 +199,7 @@ const col = createColumnHelper<HealthRow>();
 const columns = [
   col.accessor("id", { header: "Aset", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
   col.accessor("type", { header: "Jenis", cell: (c) => (c.getValue() === "pv" ? "PV" : "Baterai") }),
-  col.accessor("gangId", { header: "Gang", cell: (c) => c.getValue().replace("G", "Gang ") }),
+  col.accessor("zoneId", { header: "Zone", cell: (c) => c.getValue().replace("Z", "Zona ") }),
   col.accessor((r) => r.score.score, { id: "score", header: "Skor", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
   col.accessor((r) => r.score.band, { id: "band", header: "Kategori", cell: (c) => BAND_LABEL[c.getValue()] }),
   col.accessor("status", { header: "Status", cell: (c) => <StatusBadge status={c.getValue() as AssetStatus} /> }),
@@ -232,15 +232,15 @@ function Histogram({ rows }: { rows: HealthRow[] }) {
 }
 
 function HealthTab() {
-  const gangId = useUi((s) => s.gangId);
+  const zoneId = useUi((s) => s.zoneId);
   const [type, setType] = useState<"" | "pv" | "battery">("");
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const q = useQuery({ queryKey: ["ai", "health"], queryFn: () => apiGet<{ rows: HealthRow[] }>("/api/v1/ai/health-scores"), refetchInterval: 4000 });
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return (q.data?.rows ?? []).filter((r) => (!gangId || r.gangId === gangId) && (!type || r.type === type) && (!s || r.id.toLowerCase().includes(s)));
-  }, [q.data, gangId, type, search]);
+    return (q.data?.rows ?? []).filter((r) => (!zoneId || r.zoneId === zoneId) && (!type || r.type === type) && (!s || r.id.toLowerCase().includes(s)));
+  }, [q.data, zoneId, type, search]);
   const worst = useMemo(() => [...rows].sort((a, b) => a.score.score - b.score.score)[0], [rows]);
   const current = rows.find((r) => r.id === picked) ?? worst;
 
@@ -250,7 +250,7 @@ function HealthTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <input aria-label="Cari aset" placeholder="Cari ID aset" value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
-        <GangFilter />
+        <ZoneFilter />
         <label htmlFor="type-filter" className="sr-only">Jenis aset</label>
         <select id="type-filter" value={type} onChange={(e) => setType(e.target.value as "" | "pv" | "battery")} className={selectClass}>
           <option value="">PV dan baterai</option>
@@ -271,7 +271,7 @@ function HealthTab() {
         {current ? (
           <Card className="p-5 xl:sticky xl:top-4">
             <p className="num text-lg font-semibold text-ink">{current.id}</p>
-            <p className="mb-3 text-xs text-ink-3">{current.type === "pv" ? "Sistem PV" : "Baterai"}, {current.gangId.replace("G", "Gang ")}</p>
+            <p className="mb-3 text-xs text-ink-3">{current.type === "pv" ? "Sistem PV" : "Baterai"}, {current.zoneId.replace("Z", "Zona ")}</p>
             <HealthScoreRing score={current.score.score} size={84} />
             <h3 className="mt-4 text-xs font-semibold text-ink-2">Faktor penyusun skor</h3>
             <ul className="mt-2 space-y-2.5">

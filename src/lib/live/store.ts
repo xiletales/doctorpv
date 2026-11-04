@@ -9,12 +9,11 @@ import { median } from "../ai/stats";
 import { evaluateBattery, evaluatePv, type AlertType, type Condition } from "../alerts/rules";
 import { telemetryMessage, type ScenarioName, type SimDirective, type TelemetryMessage } from "../contracts/telemetry";
 import { dayStart, DAY, defaultClock, simNow, wibDay, type ClockConfig } from "../sim/time";
-import type { AlertPriority, AssetStatus, SessionUser } from "../types";
-import { gangScope } from "../rbac";
+import type { AlertPriority, AssetStatus } from "../types";
 
 export interface PvLive {
   id: string;
-  gangId: string;
+  zoneId: string;
   acW: number;
   dcV: number;
   dcI: number;
@@ -31,7 +30,7 @@ export interface PvLive {
 
 export interface BatteryLive {
   id: string;
-  gangId: string;
+  zoneId: string;
   voltage: number;
   currentA: number;
   soc: number;
@@ -45,7 +44,7 @@ export interface BatteryLive {
   health: number;
 }
 
-export interface GangLive {
+export interface ZoneLive {
   id: string;
   pvW: number;
   loadW: number;
@@ -64,7 +63,7 @@ export interface GangLive {
 
 export interface GatewayLive {
   id: string;
-  gangId: string;
+  zoneId: string;
   online: boolean;
   lastSeen: number;
   bufferEstimate: number;
@@ -79,7 +78,7 @@ export interface LiveSnapshot {
   seedStale: boolean;
   pv: PvLive[];
   batteries: BatteryLive[];
-  gangs: GangLive[];
+  zones: ZoneLive[];
   gateways: GatewayLive[];
   openAlerts: number;
   directive: SimDirective;
@@ -90,7 +89,7 @@ export interface AlertEvent {
   kind: "new" | "upgraded" | "resolved" | "sync" | "reset";
   id?: string;
   assetId?: string;
-  gangId?: string;
+  zoneId?: string;
   priority?: AlertPriority;
   message?: string;
   recommendedAction?: string;
@@ -101,13 +100,12 @@ interface OpenAlert {
   id: string;
   assetId: string;
   assetType: string;
-  gangId: string;
+  zoneId: string;
   type: AlertType;
   priority: AlertPriority;
 }
 
 interface Subscriber {
-  user: SessionUser;
   send: (event: string, data: unknown) => void;
 }
 
@@ -127,10 +125,10 @@ const parseTs = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
 class LiveStore {
   clock: ClockConfig = defaultClock();
-  directive: SimDirective = { clock: this.clock, inverterH021: false, batteryB025: false, gw3Offline: false, repaired: [], resetEpoch: 0 };
+  directive: SimDirective = { clock: this.clock, inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, fastForward: false, repaired: [], resetEpoch: 0 };
   pv = new Map<string, PvLive>();
   batteries = new Map<string, BatteryLive>();
-  gangs = new Map<string, GangLive>();
+  zones = new Map<string, ZoneLive>();
   gateways = new Map<string, GatewayLive>();
   rings = new Map<string, RingPoint[]>();
   health = new Map<string, HealthScore>();
@@ -164,7 +162,7 @@ class LiveStore {
     const now = simNow(this.clock);
     const bucket = Math.floor(now / 300) * 300;
     const today = dayStart(wibDay(now));
-    const [solar, batts, gws, alerts, preds, solarNow, battNow, meterNow, weatherNow, todayEnergy, gangToday] = await Promise.all([
+    const [solar, batts, gws, alerts, preds, solarNow, battNow, meterNow, weatherNow, todayEnergy, zoneToday] = await Promise.all([
       prisma.solarSystem.findMany({ include: { house: true } }),
       prisma.battery.findMany(),
       prisma.gateway.findMany(),
@@ -189,7 +187,7 @@ class LiveStore {
     this.open.clear();
     for (const a of alerts) {
       this.open.set(`${a.assetId}:${a.type}`, {
-        id: a.id, assetId: a.assetId, assetType: a.assetType, gangId: a.gangId,
+        id: a.id, assetId: a.assetId, assetType: a.assetType, zoneId: a.zoneId,
         type: a.type as AlertType, priority: a.priority as AlertPriority,
       });
     }
@@ -207,7 +205,7 @@ class LiveStore {
       const row = sNow.get(id);
       const expectedW = expectedPowerW(s.capacityKwp, g, amb, s.baselinePr);
       this.pv.set(id, {
-        id, gangId: s.house.gangId, acW: row?.acPowerW ?? 0, dcV: row?.dcVoltage ?? 0, dcI: row?.dcCurrent ?? 0,
+        id, zoneId: s.house.zoneId, acW: row?.acPowerW ?? 0, dcV: row?.dcVoltage ?? 0, dcI: row?.dcCurrent ?? 0,
         tempC: row?.panelTempC ?? amb, inverter: row?.inverter ?? "IDLE", rssi: -70, expectedW,
         ratio: expectedW > 0 ? (row?.acPowerW ?? 0) / expectedW : 1, todayKwh: eToday.get(id) ?? 0,
         capacityKwp: s.capacityKwp, status: "normal", health: 0,
@@ -216,20 +214,20 @@ class LiveStore {
     for (const b of batts) {
       const r = bNow.get(b.id);
       this.batteries.set(b.id, {
-        id: b.id, gangId: b.gangId, voltage: r?.voltage ?? 51, currentA: r?.currentA ?? 0, soc: r?.soc ?? 50,
+        id: b.id, zoneId: b.zoneId, voltage: r?.voltage ?? 51, currentA: r?.currentA ?? 0, soc: r?.soc ?? 50,
         soh: r?.soh ?? 90, tempC: r?.tempC ?? 30, spreadMv: r?.spreadMv ?? 30, cycles: r?.cycles ?? 0,
         bms: r?.bms ?? "OK", rssi: -68, status: "normal", health: 0,
       });
     }
     for (const gw of gws) {
-      const m = mNow.get(gw.gangId);
-      const pvToday = gangToday.find((x) => x.scopeId === gw.gangId)?._sum.pvW ?? 0;
-      this.gangs.set(gw.gangId, {
-        id: gw.gangId, pvW: m?.pvW ?? 0, loadW: m?.loadW ?? 0, plnW: m?.plnImportW ?? 0, chargeW: m?.chargeW ?? 0,
+      const m = mNow.get(gw.zoneId);
+      const pvToday = zoneToday.find((x) => x.scopeId === gw.zoneId)?._sum.pvW ?? 0;
+      this.zones.set(gw.zoneId, {
+        id: gw.zoneId, pvW: m?.pvW ?? 0, loadW: m?.loadW ?? 0, plnW: m?.plnImportW ?? 0, chargeW: m?.chargeW ?? 0,
         dischargeW: m?.dischargeW ?? 0, curtailW: m?.curtailW ?? 0, avgSoc: 0, irradiance: g, ambientC: amb,
         status: "normal", critical: 0, warning: 0, todayKwh: (pvToday * 300) / 3600 / 1000,
       });
-      this.gateways.set(gw.id, { id: gw.id, gangId: gw.gangId, online: true, lastSeen: 0, bufferEstimate: 0, lastSyncCount: 0 });
+      this.gateways.set(gw.id, { id: gw.id, zoneId: gw.zoneId, online: true, lastSeen: 0, bufferEstimate: 0, lastSyncCount: 0 });
     }
     this.recompute();
     if (!holder.__watchdog) holder.__watchdog = setInterval(() => void this.enqueue(() => this.watchdog()), 2000);
@@ -298,10 +296,10 @@ class LiveStore {
       this.offlineSince.delete(gatewayId);
       if (bufferedCount > 0) {
         gw.lastSyncCount = bufferedCount;
-        this.emitAlert({ kind: "sync", assetId: gatewayId, gangId: gw.gangId, count: bufferedCount, message: `${gatewayId} tersambung kembali. ${bufferedCount} pesan dari buffer tersinkron.` }, gw.gangId);
+        this.emitAlert({ kind: "sync", assetId: gatewayId, zoneId: gw.zoneId, count: bufferedCount, message: `${gatewayId} tersambung kembali. ${bufferedCount} pesan dari buffer tersinkron.` });
       }
       if (wasOffline) await this.resolve(`${gatewayId}:gateway_offline`);
-      await this.evaluateGang(gw.gangId);
+      await this.evaluateGang(gw.zoneId);
     }
     if (toPersist.length) await this.persist(toPersist);
     this.recompute();
@@ -315,13 +313,13 @@ class LiveStore {
       const p = this.pv.get(msg.assetId);
       if (!p) return;
       const m = msg.metrics;
-      const gang = this.gangs.get(p.gangId);
+      const zone = this.zones.get(p.zoneId);
       const meta = this.meta.get(p.id);
       const prevW = p.acW;
       p.acW = m.acPowerW; p.dcV = m.dcVoltage; p.dcI = m.dcCurrent; p.tempC = m.panelTempC;
       p.inverter = msg.status.inverter; p.rssi = msg.status.rssi;
-      if (gang && meta) {
-        p.expectedW = expectedPowerW(meta.capacityKwp, gang.irradiance, gang.ambientC, meta.baselinePr);
+      if (zone && meta) {
+        p.expectedW = expectedPowerW(meta.capacityKwp, zone.irradiance, zone.ambientC, meta.baselinePr);
         p.ratio = p.expectedW > 1 ? m.acPowerW / p.expectedW : 1;
       }
       if (this.clock.mode === "real") p.todayKwh += ((prevW + m.acPowerW) / 2) * (2 / 3600) / 1000;
@@ -334,7 +332,7 @@ class LiveStore {
       b.spreadMv = m.spreadMv; b.cycles = m.cycles; b.bms = msg.status.bms; b.rssi = msg.status.rssi;
       this.pushRing(b.id, nowReal, m.tempC, m.soc);
     } else {
-      const g = this.gangs.get(msg.assetId);
+      const g = this.zones.get(msg.assetId);
       if (!g) return;
       const m = msg.metrics;
       g.pvW = m.pvW; g.loadW = m.loadW; g.plnW = m.plnImportW; g.chargeW = m.chargeW; g.dischargeW = m.dischargeW;
@@ -349,23 +347,23 @@ class LiveStore {
     this.rings.set(id, ring);
   }
 
-  private async evaluateGang(gangId: string) {
-    const gang = this.gangs.get(gangId);
-    if (!gang) return;
+  private async evaluateGang(zoneId: string) {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return;
     for (const p of this.pv.values()) {
-      if (p.gangId !== gangId || this.isDeviceOffline(p.id)) continue;
-      const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: p.ratio }, gang.irradiance);
+      if (p.zoneId !== zoneId || this.isDeviceOffline(p.id)) continue;
+      const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: p.ratio }, zone.irradiance);
       if (conds === null) continue;
-      await this.sync(p.id, "pv", gangId, conds, PV_TYPES);
+      await this.sync(p.id, "pv", zoneId, conds, PV_TYPES);
     }
     for (const b of this.batteries.values()) {
-      if (b.gangId !== gangId) continue;
-      await this.sync(b.id, "battery", gangId, evaluateBattery(b), BATT_TYPES);
+      if (b.zoneId !== zoneId) continue;
+      await this.sync(b.id, "battery", zoneId, evaluateBattery(b), BATT_TYPES);
     }
   }
 
   /** Raises after 2 consecutive evaluations, and clears after 3 so that noise cannot flap an alert. */
-  private async sync(assetId: string, assetType: string, gangId: string, conds: Condition[], types: AlertType[]) {
+  private async sync(assetId: string, assetType: string, zoneId: string, conds: Condition[], types: AlertType[]) {
     const active = new Set(conds.map((c) => c.type));
     for (const c of conds) {
       const key = `${assetId}:${c.type}`;
@@ -382,7 +380,7 @@ class LiveStore {
       this.hits.set(key, n);
       if (n >= 2) {
         this.hits.delete(key);
-        await this.raise(assetId, assetType, gangId, c);
+        await this.raise(assetId, assetType, zoneId, c);
       }
     }
     for (const t of types) {
@@ -405,16 +403,16 @@ class LiveStore {
     return `LIVE-${realNow()}-${this.alertSeq}`;
   }
 
-  private async raise(assetId: string, assetType: string, gangId: string, c: Condition) {
+  private async raise(assetId: string, assetType: string, zoneId: string, c: Condition) {
     const id = this.nextId();
     const at = simNow(this.clock);
     await prisma.alert.create({
-      data: { id, assetType, assetId, gangId, type: c.type, priority: c.priority, message: c.message, recommendedAction: c.recommendedAction, status: "open", createdAt: at },
+      data: { id, assetType, assetId, zoneId, type: c.type, priority: c.priority, message: c.message, recommendedAction: c.recommendedAction, status: "open", createdAt: at },
     });
-    const entry: OpenAlert = { id, assetId, assetType, gangId, type: c.type, priority: c.priority };
+    const entry: OpenAlert = { id, assetId, assetType, zoneId, type: c.type, priority: c.priority };
     this.open.set(`${assetId}:${c.type}`, entry);
     await this.createAnomaly(entry, at);
-    this.emitAlert({ kind: "new", id, assetId, gangId, priority: c.priority, message: c.message, recommendedAction: c.recommendedAction }, gangId);
+    this.emitAlert({ kind: "new", id, assetId, zoneId, priority: c.priority, message: c.message, recommendedAction: c.recommendedAction });
   }
 
   private async upgrade(existing: OpenAlert, c: Condition) {
@@ -431,7 +429,7 @@ class LiveStore {
       if (fresh) payload.diagnosis = fresh;
       await prisma.aiPrediction.update({ where: { id: pred.id }, data: { payloadJson: JSON.stringify(payload), confidence: fresh?.confidence ?? pred.confidence } });
     }
-    this.emitAlert({ kind: "upgraded", id: existing.id, assetId: existing.assetId, gangId: existing.gangId, priority: c.priority, message: c.message, recommendedAction: c.recommendedAction }, existing.gangId);
+    this.emitAlert({ kind: "upgraded", id: existing.id, assetId: existing.assetId, zoneId: existing.zoneId, priority: c.priority, message: c.message, recommendedAction: c.recommendedAction });
   }
 
   private async resolve(key: string) {
@@ -446,7 +444,7 @@ class LiveStore {
       payload.open = false;
       await prisma.aiPrediction.update({ where: { id: pred.id }, data: { payloadJson: JSON.stringify(payload) } });
     }
-    this.emitAlert({ kind: "resolved", id: a.id, assetId: a.assetId, gangId: a.gangId }, a.gangId);
+    this.emitAlert({ kind: "resolved", id: a.id, assetId: a.assetId, zoneId: a.zoneId });
   }
 
   private async diagnosisFor(a: OpenAlert) {
@@ -479,42 +477,42 @@ class LiveStore {
     };
     await prisma.aiPrediction.create({
       data: {
-        id: `ANM-${a.id}`, assetType: a.assetType, assetId: a.assetId, gangId: a.gangId, kind: "anomaly",
+        id: `ANM-${a.id}`, assetType: a.assetType, assetId: a.assetId, zoneId: a.zoneId, kind: "anomaly",
         payloadJson: JSON.stringify(payload), confidence: diagnosis?.confidence ?? 0.5, modelVersion: MODEL_VERSION, alertId: a.id, createdAt: at,
       },
     });
     this.anomalies.set(a.assetId, (this.anomalies.get(a.assetId) ?? 0) + 1);
   }
 
-  private peerRatio(gangId: string, exclude: string): number {
-    const list = [...this.pv.values()].filter((p) => p.gangId === gangId && p.id !== exclude && !this.isDeviceOffline(p.id)).map((p) => p.ratio);
+  private peerRatio(exclude: string): number {
+    const list = [...this.pv.values()].filter((p) => p.id !== exclude && !this.isDeviceOffline(p.id)).map((p) => p.ratio);
     return list.length ? median(list) : 1;
   }
 
   private async diagnosePvLive(id: string) {
     const p = this.pv.get(id);
     const meta = this.meta.get(id);
-    const gang = p ? this.gangs.get(p.gangId) : undefined;
-    if (!p || !meta || !gang) return null;
+    const zone = p ? this.zones.get(p.zoneId) : undefined;
+    if (!p || !meta || !zone) return null;
     const now = simNow(this.clock);
     const from = now - 30 * DAY;
     const [rows, wx, peers] = await Promise.all([
       prisma.solarTelemetry.findMany({ where: { assetId: id, res: 60, ts: { gte: from, lte: now } }, orderBy: { ts: "asc" } }),
       prisma.weatherReading.findMany({ where: { res: 60, ts: { gte: from, lte: now } } }),
-      this.peerDaily(p.gangId, id, from, now),
+      this.peerDaily(id, from, now),
     ]);
     const weather = new Map<number, HourlyWeather>(wx.map((w) => [w.ts, { ts: w.ts, irradiance: w.irradiance, ambientC: w.ambientC }]));
     const hourly: PvHourlyRow[] = rows.map((r) => ({ ts: r.ts, acW: r.acPowerW, dcV: r.dcVoltage, dcI: r.dcCurrent, inverter: r.inverter }));
     const f = pvFeatures(
       { capacityKwp: meta.capacityKwp, baselinePr: meta.baselinePr, rows: hourly, weather, peersByDay: await peers(weather) },
       now,
-      { acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, irradiance: gang.irradiance, ambientC: gang.ambientC, peerRatio: this.peerRatio(p.gangId, id) },
+      { acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, irradiance: zone.irradiance, ambientC: zone.ambientC, peerRatio: this.peerRatio(id) },
     );
     return runPvDiagnosis(f);
   }
 
-  private async peerDaily(gangId: string, exclude: string, from: number, to: number) {
-    const peers = [...this.pv.values()].filter((p) => p.gangId === gangId && p.id !== exclude).map((p) => p.id);
+  private async peerDaily(exclude: string, from: number, to: number) {
+    const peers = [...this.pv.values()].filter((p) => p.id !== exclude).map((p) => p.id);
     const rows = await prisma.solarTelemetry.findMany({ where: { assetId: { in: peers }, res: 60, ts: { gte: from, lte: to } }, select: { assetId: true, ts: true, acPowerW: true } });
     return async (weather: Map<number, HourlyWeather>) => {
       const byDay = new Map<number, number[]>();
@@ -535,8 +533,8 @@ class LiveStore {
   private diagnoseBatteryLive(id: string) {
     const b = this.batteries.get(id);
     if (!b) return null;
-    const gang = this.gangs.get(b.gangId);
-    const peers = [...this.batteries.values()].filter((o) => o.gangId === b.gangId && o.id !== id).map((o) => o.tempC);
+    const zone = this.zones.get(b.zoneId);
+    const peers = [...this.batteries.values()].filter((o) => o.id !== id).map((o) => o.tempC);
     const ring = (this.rings.get(id) ?? []).slice(-10);
     let rise = 0;
     if (ring.length >= 2) {
@@ -544,7 +542,7 @@ class LiveStore {
       rise = (ring[ring.length - 1].a - ring[0].a) / dtMin;
     }
     return runBatteryDiagnosis({
-      tempC: b.tempC, ambientC: gang?.ambientC ?? 30, peerTempC: median(peers), tempRisePerMin: rise,
+      tempC: b.tempC, ambientC: zone?.ambientC ?? 30, peerTempC: median(peers), tempRisePerMin: rise,
       currentA: b.currentA, spreadMv: b.spreadMv, soh: b.soh, bmsAlarm: b.bms === "ALARM", implausibleSteps: false,
     });
   }
@@ -566,16 +564,16 @@ class LiveStore {
         gw.online = false;
         this.offlineSince.set(gw.id, nowReal);
         changed = true;
-        await this.raise(gw.id, "gateway", gw.gangId, {
+        await this.raise(gw.id, "gateway", gw.zoneId, {
           type: "gateway_offline",
           priority: "high",
-          message: `${gw.id} terputus. Data ${gw.gangId.replace("G", "Gang ")} ditampung di buffer lokal.`,
+          message: `${gw.id} terputus. Data ${gw.zoneId.replace("Z", "Zona ")} ditampung di buffer lokal.`,
           recommendedAction: "Periksa koneksi internet gateway. Data akan tersinkron otomatis saat tersambung.",
         });
       }
       if (!gw.online) {
         const since = this.offlineSince.get(gw.id) ?? nowReal;
-        gw.bufferEstimate = Math.round(((nowReal - since) / 2) * 31);
+        gw.bufferEstimate = Math.round(((nowReal - since) / 2) * 16);
         changed = true;
       }
     }
@@ -605,15 +603,15 @@ class LiveStore {
 
   /** Derives statuses and health scores. Status always comes from open alerts plus connectivity. */
   private recompute() {
-    const gwOffline = new Set([...this.gateways.values()].filter((g) => !g.online).map((g) => g.gangId));
+    const gwOffline = new Set([...this.gateways.values()].filter((g) => !g.online).map((g) => g.zoneId));
     const worst = new Map<string, AlertPriority>();
     for (const a of this.open.values()) {
       const cur = worst.get(a.assetId);
       if (!cur || rank(a.priority) > rank(cur)) worst.set(a.assetId, a.priority);
     }
-    const toStatus = (id: string, gangId: string, maintenance = false): AssetStatus => {
+    const toStatus = (id: string, zoneId: string, maintenance = false): AssetStatus => {
       if (maintenance) return "maintenance";
-      if (gwOffline.has(gangId) || this.isDeviceOffline(id)) return "offline";
+      if (gwOffline.has(zoneId) || this.isDeviceOffline(id)) return "offline";
       const p = worst.get(id);
       if (p === "critical") return "critical";
       if (p === "high" || p === "medium") return "warning";
@@ -621,9 +619,9 @@ class LiveStore {
     };
     for (const p of this.pv.values()) {
       const meta = this.meta.get(p.id);
-      p.status = toStatus(p.id, p.gangId, meta?.maintenance);
-      const gang = this.gangs.get(p.gangId);
-      const judged = (gang?.irradiance ?? 0) >= 150;
+      p.status = toStatus(p.id, p.zoneId, meta?.maintenance);
+      const zone = this.zones.get(p.zoneId);
+      const judged = (zone?.irradiance ?? 0) >= 150;
       const h = pvHealth({
         performanceRatio: judged ? p.ratio : 0.95,
         anomalies30d: this.anomalies.get(p.id) ?? 0,
@@ -635,7 +633,7 @@ class LiveStore {
       p.health = h.score;
     }
     for (const b of this.batteries.values()) {
-      b.status = toStatus(b.id, b.gangId);
+      b.status = toStatus(b.id, b.zoneId);
       const h = batteryHealth({
         soh: b.soh, tempC: b.tempC, spreadMv: b.spreadMv, cycles: b.cycles,
         anomalies30d: this.anomalies.get(b.id) ?? 0,
@@ -644,36 +642,34 @@ class LiveStore {
       this.health.set(b.id, h);
       b.health = h.score;
     }
-    for (const g of this.gangs.values()) {
-      const socs = [...this.batteries.values()].filter((b) => b.gangId === g.id).map((b) => b.soc);
+    for (const g of this.zones.values()) {
+      const socs = [...this.batteries.values()].filter((b) => b.zoneId === g.id).map((b) => b.soc);
       g.avgSoc = socs.reduce((a, b) => a + b, 0) / Math.max(socs.length, 1);
-      const alerts = [...this.open.values()].filter((a) => a.gangId === g.id);
+      const alerts = [...this.open.values()].filter((a) => a.zoneId === g.id);
       g.critical = alerts.filter((a) => a.priority === "critical").length;
       g.warning = alerts.filter((a) => a.priority === "high" || a.priority === "medium").length;
       g.status = g.critical > 0 ? "critical" : g.warning > 0 ? "warning" : "normal";
     }
   }
 
-  snapshot(user?: SessionUser): LiveSnapshot {
-    const scope = user ? gangScope(user) : null;
-    const allow = (g: string) => scope === null || scope.includes(g);
+  snapshot(): LiveSnapshot {
     return {
       simTs: simNow(this.clock),
       clock: this.clock,
       simulatorConnected: this.lastAnyMessage > 0 && realNow() - this.lastAnyMessage <= OFFLINE_AFTER,
       seedStale: this.seedDay !== wibDay(simNow(this.clock)),
-      pv: [...this.pv.values()].filter((p) => allow(p.gangId)),
-      batteries: [...this.batteries.values()].filter((b) => allow(b.gangId)),
-      gangs: [...this.gangs.values()].filter((g) => allow(g.id)),
-      gateways: [...this.gateways.values()].filter((g) => allow(g.gangId)),
-      openAlerts: [...this.open.values()].filter((a) => allow(a.gangId)).length,
+      pv: [...this.pv.values()],
+      batteries: [...this.batteries.values()],
+      zones: [...this.zones.values()],
+      gateways: [...this.gateways.values()],
+      openAlerts: this.open.size,
       directive: this.directive,
       quality: this.quality,
     };
   }
 
-  subscribe(user: SessionUser, send: Subscriber["send"]): () => void {
-    const sub = { user, send };
+  subscribe(send: Subscriber["send"]): () => void {
+    const sub = { send };
     this.subs.add(sub);
     return () => this.subs.delete(sub);
   }
@@ -682,15 +678,12 @@ class LiveStore {
     if (this.flushTimer) return;
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
-      for (const s of this.subs) s.send("snapshot", this.snapshot(s.user));
+      for (const s of this.subs) s.send("snapshot", this.snapshot());
     }, 250);
   }
 
-  private emitAlert(event: AlertEvent, gangId: string) {
-    for (const s of this.subs) {
-      const scope = gangScope(s.user);
-      if (scope === null || scope.includes(gangId)) s.send("alert", event);
-    }
+  private emitAlert(event: AlertEvent) {
+    for (const s of this.subs) s.send("alert", event);
   }
 
   /** Applies a person's status change. Closing keeps the alert closed until its condition clears. */
@@ -719,7 +712,7 @@ class LiveStore {
       }
       this.recompute();
       this.scheduleFlush();
-      this.emitAlert({ kind: "resolved", id, assetId: current.assetId, gangId: current.gangId }, current.gangId);
+      this.emitAlert({ kind: "resolved", id, assetId: current.assetId, zoneId: current.zoneId });
       return updated;
     });
   }
@@ -729,8 +722,8 @@ class LiveStore {
     return this.enqueue(async () => {
       this.directive = {
         ...this.directive,
-        inverterH021: assetId === "H021" ? false : this.directive.inverterH021,
-        batteryB025: assetId === "B025" ? false : this.directive.batteryB025,
+        inverterH21: assetId === "H21" ? false : this.directive.inverterH21,
+        batteryB08: assetId === "B08" ? false : this.directive.batteryB08,
         repaired: [...new Set([...this.directive.repaired, assetId])],
       };
       this.scheduleFlush();
@@ -750,8 +743,10 @@ class LiveStore {
   scenario(name: ScenarioName) {
     return this.enqueue(async () => {
       await this.init();
-      if (name === "inverter_h021") this.directive = { ...this.directive, inverterH021: true };
-      if (name === "battery_b025_overheat") this.directive = { ...this.directive, batteryB025: true };
+      if (name === "inverter_h21") this.directive = { ...this.directive, inverterH21: true, repaired: this.directive.repaired.filter((a) => a !== "H21") };
+      if (name === "battery_b08_overheat") this.directive = { ...this.directive, batteryB08: true };
+      if (name === "cloudy_day") this.directive = { ...this.directive, cloudy: !this.directive.cloudy };
+      if (name === "fast_forward_30d") this.directive = { ...this.directive, fastForward: !this.directive.fastForward };
       if (name === "gateway_gw3_offline") this.directive = { ...this.directive, gw3Offline: true };
       if (name === "gateway_gw3_reconnect") this.directive = { ...this.directive, gw3Offline: false };
       if (name === "reset") await this.reset();
@@ -760,7 +755,7 @@ class LiveStore {
   }
 
   private async reset() {
-    this.directive = { clock: this.clock, inverterH021: false, batteryB025: false, gw3Offline: false, repaired: [], resetEpoch: this.directive.resetEpoch + 1 };
+    this.directive = { clock: this.clock, inverterH21: false, batteryB08: false, gw3Offline: false, cloudy: false, fastForward: false, repaired: [], resetEpoch: this.directive.resetEpoch + 1 };
     await prisma.aiPrediction.deleteMany({ where: { id: { startsWith: "ANM-LIVE-" } } });
     await prisma.alert.deleteMany({ where: { id: { startsWith: "LIVE-" } } });
     await prisma.workOrder.deleteMany({});

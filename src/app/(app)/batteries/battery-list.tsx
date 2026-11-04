@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { EChart, grid, tooltip, useChartTheme } from "@/components/charts/echart";
-import { GangFilter, inputClass, StatusFilter } from "@/components/domain/asset-parts";
+import { ZoneFilter, inputClass, StatusFilter } from "@/components/domain/asset-parts";
 import { DataTable } from "@/components/domain/data-table";
 import { DisclaimerNote, PageTitle, StatusBadge } from "@/components/domain/status";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { useUi } from "@/stores/ui";
 const col = createColumnHelper<BatteryLive>();
 const columns = [
   col.accessor("id", { header: "ID", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
-  col.accessor("gangId", { header: "Gang", cell: (c) => c.getValue().replace("G", "Gang ") }),
+  col.accessor("zoneId", { header: "Zone", cell: (c) => c.getValue().replace("Z", "Zona ") }),
   col.accessor("soc", { header: "SoC", cell: (c) => <span className="num">{num(c.getValue(), 1)}%</span> }),
   col.accessor("soh", { header: "SoH", cell: (c) => <span className="num">{num(c.getValue(), 1)}%</span> }),
   col.accessor("voltage", { header: "Tegangan", cell: (c) => <span className="num">{num(c.getValue(), 1)} V</span> }),
@@ -49,7 +49,7 @@ function BatteryCell({ b }: { b: BatteryLive }) {
         <p className="text-xs text-ink-3">{charging ? "Mengisi" : b.currentA < -0.5 ? "Mengosongkan" : "Diam"}</p>
         <StatusBadge status={b.status} className="mt-1.5" />
       </div>
-      <dl className="hidden shrink-0 space-y-0.5 text-right text-xs sm:block">
+      <dl className="hidden shrink-0 space-y-0.5 text-right text-xs sm:block xl:hidden 2xl:block">
         <div><dt className="sr-only">SoH</dt><dd className="num text-ink">{num(b.soh, 1)}%</dd><span className="text-ink-3">SoH</span></div>
         <div><dt className="sr-only">Suhu</dt><dd className="num text-ink">{num(b.tempC, 1)} °C</dd></div>
       </dl>
@@ -57,50 +57,45 @@ function BatteryCell({ b }: { b: BatteryLive }) {
   );
 }
 
-function SohCompare({ list, gangLabel }: { list: BatteryLive[]; gangLabel: string }) {
+function SohCompare({ list, zoneLabel }: { list: BatteryLive[]; zoneLabel: string }) {
   const t = useChartTheme();
   const option = useMemo(() => {
     const sorted = [...list].sort((a, b) => a.id.localeCompare(b.id));
     return {
       animation: false,
       tooltip: { ...tooltip(t), axisPointer: { type: "shadow", shadowStyle: { color: "transparent" } }, formatter: (p: { name: string; value: number }[]) => `${p[0].name}<br/><b>SoH ${num(p[0].value, 1)}%</b>` },
-      grid: grid({ top: 14, left: 34, bottom: 24 }),
+      grid: grid({ top: 14, left: 34, bottom: 24, right: 78 }),
       xAxis: { type: "category", data: sorted.map((b) => b.id), axisLabel: { color: t.text, fontSize: 11 }, axisTick: { show: false }, axisLine: { lineStyle: { color: t.grid } } },
       yAxis: { type: "value", min: 60, max: 100, axisLabel: { color: t.text, fontSize: 11, formatter: "{value}%" }, splitLine: { lineStyle: { color: t.grid } } },
       series: [{
         type: "bar", barWidth: "55%",
         data: sorted.map((b) => ({ value: b.soh, itemStyle: { color: b.soh < 80 ? t.high : t.battery, borderRadius: [4, 4, 0, 0] } })),
-        markLine: { silent: true, symbol: "none", label: { formatter: "Ambang 80%", color: t.text, fontSize: 11, position: "insideStartTop" }, lineStyle: { color: t.muted, type: "dashed" }, data: [{ yAxis: 80 }] },
+        markLine: { silent: true, symbol: "none", label: { formatter: "Ambang 80%", color: t.text, fontSize: 11, position: "end" }, lineStyle: { color: t.muted, type: "dashed" }, data: [{ yAxis: 80 }] },
       }],
     };
   }, [list, t]);
-  return <EChart option={option} style={{ height: 220 }} ariaLabel={`Perbandingan SoH baterai ${gangLabel}`} />;
+  return <EChart option={option} style={{ height: 220 }} ariaLabel={`Perbandingan SoH baterai ${zoneLabel}`} />;
 }
 
 export function BatteryList() {
   const router = useRouter();
   const batteries = useLive((s) => s.snapshot?.batteries);
-  const gangId = useUi((s) => s.gangId);
+  const zoneId = useUi((s) => s.zoneId);
   const [view, setView] = useState<"grid" | "table">("grid");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<AssetStatus | "">("");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (batteries ?? []).filter((b) => (!gangId || b.gangId === gangId) && (!status || b.status === status) && (!q || b.id.toLowerCase().includes(q)));
-  }, [batteries, gangId, status, search]);
-
-  const compare = useMemo(() => {
-    const g = gangId ?? batteries?.[0]?.gangId;
-    return (batteries ?? []).filter((b) => b.gangId === g);
-  }, [batteries, gangId]);
+    return (batteries ?? []).filter((b) => (!zoneId || b.zoneId === zoneId) && (!status || b.status === status) && (!q || b.id.toLowerCase().includes(q)));
+  }, [batteries, zoneId, status, search]);
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <PageTitle title="Kesehatan baterai" description="50 baterai LiFePO₄ bersama, 10 unit per gang." />
+      <PageTitle title="Kesehatan baterai" description="15 baterai LiFePO₄ bersama. Satu baterai melayani 2 rumah bertetangga." />
       <div className="flex flex-wrap items-center gap-2">
-        <input aria-label="Cari ID baterai" placeholder="Cari ID, misalnya B025" value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
-        <GangFilter />
+        <input aria-label="Cari ID baterai" placeholder="Cari ID, misalnya B08" value={search} onChange={(e) => setSearch(e.target.value)} className={inputClass} />
+        <ZoneFilter />
         <StatusFilter value={status} onChange={setStatus} />
         <div className="ml-auto flex gap-1 rounded-lg border border-line bg-surface p-0.5">
           <Button size="sm" variant={view === "grid" ? "primary" : "ghost"} aria-pressed={view === "grid"} onClick={() => setView("grid")}><LayoutGrid className="h-3.5 w-3.5" aria-hidden /> Kartu</Button>
@@ -112,16 +107,16 @@ export function BatteryList() {
         filtered.length === 0 ? (
           <Card className="px-6 py-10 text-center text-sm text-ink-3">Tidak ada baterai yang cocok. Ubah filter untuk melihat lebih banyak.</Card>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{filtered.map((b) => <BatteryCell key={b.id} b={b} />)}</div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{filtered.map((b) => <BatteryCell key={b.id} b={b} />)}</div>
         )
       ) : (
         <Card><DataTable data={filtered} columns={columns} rowKey={(b) => b.id} onRowClick={(b) => router.push(`/batteries/${b.id}`)} initialSort={[{ id: "health", desc: false }]} /></Card>
       )}
 
-      {compare.length > 0 ? (
+      {filtered.length > 0 ? (
         <Card>
-          <CardHeader title={`Perbandingan SoH ${(gangId ?? compare[0].gangId).replace("G", "Gang ")}`} description="Pilih gang pada filter untuk membandingkan gang lain" />
-          <div className="px-4 pb-3 pt-2"><SohCompare list={compare} gangLabel={(gangId ?? compare[0].gangId).replace("G", "Gang ")} /></div>
+          <CardHeader title="Perbandingan SoH" description="Semua baterai yang cocok dengan filter, berdampingan" />
+          <div className="px-4 pb-3 pt-2"><SohCompare list={filtered} zoneLabel="klaster" /></div>
         </Card>
       ) : null}
       <DisclaimerNote>SoH diperoleh dari BMS bila didukung, atau diestimasi dengan metode tervalidasi. SoH tidak diukur langsung oleh sensor sederhana. Data simulasi.</DisclaimerNote>

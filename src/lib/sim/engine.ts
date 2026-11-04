@@ -4,14 +4,14 @@ import { hash01 } from "./rng";
 import { DAY, hourOfDay } from "./time";
 import type { BatteryDef, HouseDef, World } from "./world";
 
-const SOC_MIN = 15;
+const SOC_MIN = 10;
 const SOC_MAX = 95;
 const ETA = 0.95;
 const C_RATE = 0.5;
 
 export interface PvSample {
   id: string;
-  gangId: string;
+  zoneId: string;
   /** What the sensor reports. Differs from trueW when a sensor is faulty. */
   acW: number;
   trueW: number;
@@ -24,7 +24,7 @@ export interface PvSample {
 
 export interface BatterySample {
   id: string;
-  gangId: string;
+  zoneId: string;
   voltage: number;
   currentA: number;
   soc: number;
@@ -35,7 +35,7 @@ export interface BatterySample {
   bms: "OK" | "WARN" | "ALARM";
 }
 
-export interface GangSample {
+export interface ZoneSample {
   id: string;
   pvW: number;
   loadW: number;
@@ -52,7 +52,7 @@ export interface WorldSample {
   ambient: number;
   pv: PvSample[];
   batteries: BatterySample[];
-  gangs: GangSample[];
+  zones: ZoneSample[];
 }
 
 export interface EngineOptions {
@@ -62,24 +62,39 @@ export interface EngineOptions {
   demoDay: number;
 }
 
+interface Pair {
+  battery: BatteryDef;
+  pv: number;
+  load: number;
+  charge: number;
+  discharge: number;
+  surplus: number;
+  deficit: number;
+  pln: number;
+  curtail: number;
+  room: number;
+  avail: number;
+}
+
 export class Engine {
   readonly world: World;
   private faults: FaultIndex;
-  private housesByGang = new Map<string, HouseDef[]>();
-  private battsByGang = new Map<string, BatteryDef[]>();
+  private housesByBattery = new Map<string, HouseDef[]>();
   private soc = new Map<string, number>();
   private readonly refDayStart: number;
   private readonly demoDay: number;
+  /** Scenario hooks: a cloud multiplier, and days added to battery ageing. */
+  cloudOverride: number | null = null;
+  ageShiftDays = 0;
 
   constructor(opts: EngineOptions) {
     this.world = opts.world;
     this.faults = indexFaults(opts.faults);
     this.refDayStart = opts.refDayStart;
     this.demoDay = opts.demoDay;
-    for (const g of opts.world.gangs) {
-      this.housesByGang.set(g.id, opts.world.houses.filter((h) => h.gangId === g.id));
-      this.battsByGang.set(g.id, opts.world.batteries.filter((b) => b.gangId === g.id));
-      this.soc.set(g.id, 55);
+    for (const b of opts.world.batteries) {
+      this.housesByBattery.set(b.id, opts.world.houses.filter((h) => h.batteryId === b.id));
+      this.soc.set(b.id, 55);
     }
   }
 
@@ -92,56 +107,93 @@ export class Engine {
     for (let t = from; t < to; t += step) this.step(t, step);
   }
 
-  /** Advances the gang dispatch by dt seconds and returns the state at ts. dt = 0 only reads. */
+  /**
+   * Advances dispatch by dt seconds and returns the state at ts. dt = 0 only reads.
+   * Each house pair uses its own battery first. What is left goes over the cluster bus:
+   * surplus serves other pairs' deficits, then charges other batteries, then is curtailed.
+   * Remaining deficit discharges other batteries, and PLN covers the rest.
+   */
   step(ts: number, dt: number): WorldSample {
-    const g = irradiance(ts, this.demoDay);
+    const g = irradiance(ts, this.demoDay) * (this.cloudOverride ?? 1);
     const ambient = ambientC(ts);
     const pv: PvSample[] = [];
-    const batteries: BatterySample[] = [];
-    const gangs: GangSample[] = [];
+    const pairs: Pair[] = [];
 
-    for (const gang of this.world.gangs) {
-      const houses = this.housesByGang.get(gang.id) ?? [];
-      const batts = this.battsByGang.get(gang.id) ?? [];
-      let pvTotal = 0;
-      let load = 0;
+    for (const battery of this.world.batteries) {
+      const houses = this.housesByBattery.get(battery.id) ?? [];
+      const pair: Pair = { battery, pv: 0, load: 0, charge: 0, discharge: 0, surplus: 0, deficit: 0, pln: 0, curtail: 0, room: 0, avail: 0 };
       for (const h of houses) {
         const s = this.pvSample(h, ts, g, ambient);
         pv.push(s);
-        pvTotal += s.trueW;
-        load += loadW(h.index, h.loadScale, ts);
+        pair.pv += s.trueW;
+        pair.load += loadW(h.index, h.loadScale, ts);
       }
-
-      const capacityWh = batts.reduce((a, b) => a + b.capacityKwh * 1000 * (this.sohAt(b, ts) / 100), 0);
-      const maxP = batts.reduce((a, b) => a + b.capacityKwh * 1000 * C_RATE, 0);
-      let soc = this.soc.get(gang.id) ?? 55;
-      const net = pvTotal - load;
-      let charge = 0;
-      let discharge = 0;
-      let curtail = 0;
-      let pln = 0;
+      const soc = this.soc.get(battery.id) ?? 55;
+      const maxP = battery.capacityKwh * 1000 * C_RATE;
+      pair.room = soc < SOC_MAX ? maxP * Math.min(1, (SOC_MAX - soc) / 3) : 0;
+      pair.avail = soc > SOC_MIN ? maxP * Math.min(1, (soc - SOC_MIN) / 3) : 0;
+      const net = pair.pv - pair.load;
       if (net >= 0) {
-        const room = soc < SOC_MAX ? maxP * Math.min(1, (SOC_MAX - soc) / 3) : 0;
-        charge = Math.min(net, room);
-        curtail = net - charge;
+        pair.charge = Math.min(net, pair.room);
+        pair.surplus = net - pair.charge;
       } else {
-        const need = -net;
-        const avail = soc > SOC_MIN ? maxP * Math.min(1, (soc - SOC_MIN) / 3) : 0;
-        discharge = Math.min(need, avail);
-        pln = need - discharge;
+        pair.discharge = Math.min(-net, pair.avail);
+        pair.deficit = -net - pair.discharge;
       }
-      if (dt > 0) {
-        const hours = dt / 3600;
-        soc += ((charge * ETA - discharge / ETA) * hours * 100) / capacityWh;
-        soc = Math.max(SOC_MIN - 1, Math.min(SOC_MAX + 1, soc));
-        this.soc.set(gang.id, soc);
-      }
-      gangs.push({ id: gang.id, pvW: pvTotal, loadW: load, plnW: pln, chargeW: charge, dischargeW: discharge, curtailW: curtail, soc });
-
-      const perUnit = (charge - discharge) / batts.length;
-      for (const b of batts) batteries.push(this.batterySample(b, ts, soc, perUnit, ambient));
+      pairs.push(pair);
     }
-    return { ts, g, ambient, pv, batteries, gangs };
+
+    const totalSurplus = pairs.reduce((a, p) => a + p.surplus, 0);
+    const totalDeficit = pairs.reduce((a, p) => a + p.deficit, 0);
+    const shared = Math.min(totalSurplus, totalDeficit);
+    let surplusLeft = totalSurplus - shared;
+    let deficitLeft = totalDeficit - shared;
+
+    const roomLeft = pairs.reduce((a, p) => a + (p.room - p.charge), 0);
+    if (surplusLeft > 0 && roomLeft > 0) {
+      const used = Math.min(surplusLeft, roomLeft);
+      for (const p of pairs) p.charge += (used * (p.room - p.charge)) / roomLeft;
+      surplusLeft -= used;
+    }
+    const availLeft = pairs.reduce((a, p) => a + (p.avail - p.discharge), 0);
+    if (deficitLeft > 0 && availLeft > 0) {
+      const used = Math.min(deficitLeft, availLeft);
+      for (const p of pairs) p.discharge += (used * (p.avail - p.discharge)) / availLeft;
+      deficitLeft -= used;
+    }
+    for (const p of pairs) {
+      p.curtail = totalSurplus > 0 ? (surplusLeft * p.surplus) / totalSurplus : 0;
+      p.pln = totalDeficit > 0 ? (deficitLeft * p.deficit) / totalDeficit : 0;
+    }
+
+    const batteries: BatterySample[] = [];
+    for (const p of pairs) {
+      let soc = this.soc.get(p.battery.id) ?? 55;
+      if (dt > 0) {
+        const capacityWh = p.battery.capacityKwh * 1000 * (this.sohAt(p.battery, ts) / 100);
+        soc += ((p.charge * ETA - p.discharge / ETA) * (dt / 3600) * 100) / capacityWh;
+        soc = Math.max(SOC_MIN, Math.min(SOC_MAX, soc));
+        this.soc.set(p.battery.id, soc);
+      }
+      batteries.push(this.batterySample(p.battery, ts, soc, p.charge - p.discharge, ambient));
+    }
+
+    const zones: ZoneSample[] = this.world.zones.map((zone) => {
+      const list = pairs.filter((p) => p.battery.zoneId === zone.id);
+      const sum = (f: (p: Pair) => number) => list.reduce((a, p) => a + f(p), 0);
+      const socs = list.map((p) => this.soc.get(p.battery.id) ?? 55);
+      return {
+        id: zone.id,
+        pvW: sum((p) => p.pv),
+        loadW: sum((p) => p.load),
+        plnW: sum((p) => p.pln),
+        chargeW: sum((p) => p.charge),
+        dischargeW: sum((p) => p.discharge),
+        curtailW: sum((p) => p.curtail),
+        soc: socs.reduce((a, b) => a + b, 0) / Math.max(socs.length, 1),
+      };
+    });
+    return { ts, g, ambient, pv, batteries, zones };
   }
 
   private pvSample(h: HouseDef, ts: number, g: number, ambient: number): PvSample {
@@ -173,7 +225,7 @@ export class Engine {
     const dcI = sun && !tripped && dcV > 0 ? trueW / 0.965 / dcV : 0;
     return {
       id: h.id,
-      gangId: h.gangId,
+      zoneId: h.zoneId,
       acW: stuck ? 0 : trueW,
       trueW,
       dcV: tripped && sun ? dcV * 1.08 : dcV,
@@ -185,14 +237,13 @@ export class Engine {
   }
 
   private sohAt(b: BatteryDef, ts: number): number {
-    const days = (ts - this.refDayStart) / DAY;
+    const days = (ts - this.refDayStart) / DAY + this.ageShiftDays;
     const wobble = (hash01(b.index, Math.floor(ts / DAY)) - 0.5) * 0.08;
     return b.sohRef - b.sohRatePerDay * days + wobble;
   }
 
-  private batterySample(b: BatteryDef, ts: number, gangSoc: number, perUnitW: number, ambient: number): BatterySample {
+  private batterySample(b: BatteryDef, ts: number, soc: number, perUnitW: number, ambient: number): BatterySample {
     const faults = activeFaults(this.faults, b.id, ts);
-    const soc = Math.max(5, Math.min(100, gangSoc + b.socOffset));
     const voltage = 48.2 + (soc / 100) * 5.6 + (perUnitW > 0 ? 0.3 : perUnitW < 0 ? -0.25 : 0);
     const currentA = perUnitW / voltage;
     let temp = ambient + 2.5 + b.tempOffset + Math.abs(currentA) * 0.11;
@@ -212,7 +263,7 @@ export class Engine {
     const ageAtTs = b.ageDays + (ts - this.refDayStart) / DAY;
     return {
       id: b.id,
-      gangId: b.gangId,
+      zoneId: b.zoneId,
       voltage,
       currentA,
       soc,

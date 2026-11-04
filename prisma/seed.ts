@@ -14,7 +14,7 @@ import { dayStart, DAY, defaultClock, simNow, wibDay } from "../src/lib/sim/time
 import { buildWorld, envCenter } from "../src/lib/sim/world";
 
 const started = Date.now();
-const file = (process.env.DATABASE_URL ?? "file:./data/doctorpv.db").replace(/^file:/, "");
+const file = (process.env.DATABASE_URL ?? "file:./data/sunpulse.db").replace(/^file:/, "");
 const db = new Database(file);
 db.pragma("journal_mode = WAL");
 db.pragma("synchronous = OFF");
@@ -31,21 +31,21 @@ const houseById = new Map(world.houses.map((h) => [h.id, h]));
 const battById = new Map(world.batteries.map((b) => [b.id, b]));
 
 db.exec(`
-  DELETE FROM UserGang; DELETE FROM User; DELETE FROM SolarSystem; DELETE FROM House; DELETE FROM Battery;
-  DELETE FROM Gateway; DELETE FROM Gang; DELETE FROM SolarTelemetry; DELETE FROM BatteryTelemetry;
+  DELETE FROM User; DELETE FROM Cluster; DELETE FROM SolarSystem; DELETE FROM House; DELETE FROM Battery;
+  DELETE FROM Gateway; DELETE FROM Zone; DELETE FROM SolarTelemetry; DELETE FROM BatteryTelemetry;
   DELETE FROM EnergyMeterReading; DELETE FROM WeatherReading; DELETE FROM AiPrediction; DELETE FROM Alert;
   DELETE FROM WorkOrder; DELETE FROM AuditLog; DELETE FROM Setting;
 `);
 
 const hash = bcrypt.hashSync("demo1234", 10);
-const insGang = db.prepare("INSERT INTO Gang (id,name,code,boundaryGeoJson,alleyGeoJson) VALUES (?,?,?,?,?)");
-const insUser = db.prepare("INSERT INTO User (id,name,email,passwordHash,role,active,createdAt) VALUES (?,?,?,?,?,1,?)");
+const insZone = db.prepare("INSERT INTO Zone (id,name,code,boundaryGeoJson,roadGeoJson) VALUES (?,?,?,?,?)");
+const insUser = db.prepare("INSERT INTO User (id,name,email,passwordHash,role,active,createdAt,houseId) VALUES (?,?,?,?,?,1,?,?)");
 const insSolarT = db.prepare("INSERT INTO SolarTelemetry (assetId,res,ts,dcVoltage,dcCurrent,acPowerW,energyWh,panelTempC,inverter,quality) VALUES (?,?,?,?,?,?,?,?,?,0)");
 const insBattT = db.prepare("INSERT INTO BatteryTelemetry (assetId,res,ts,voltage,currentA,soc,soh,tempC,spreadMv,cycles,bms,quality) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)");
 const insMeter = db.prepare("INSERT INTO EnergyMeterReading (scopeId,res,ts,pvW,loadW,plnImportW,chargeW,dischargeW,curtailW) VALUES (?,?,?,?,?,?,?,?,?)");
 const insWeather = db.prepare("INSERT INTO WeatherReading (res,ts,irradiance,ambientC,cloudCover) VALUES (?,?,?,?,?)");
-const insPred = db.prepare("INSERT INTO AiPrediction (id,assetType,assetId,gangId,kind,payloadJson,confidence,modelVersion,alertId,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)");
-const insAlert = db.prepare("INSERT INTO Alert (id,assetType,assetId,gangId,type,priority,message,recommendedAction,status,createdAt,acknowledgedBy,acknowledgedAt,resolvedAt,workOrderId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)");
+const insPred = db.prepare("INSERT INTO AiPrediction (id,assetType,assetId,zoneId,kind,payloadJson,confidence,modelVersion,alertId,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)");
+const insAlert = db.prepare("INSERT INTO Alert (id,assetType,assetId,zoneId,type,priority,message,recommendedAction,status,createdAt,acknowledgedBy,acknowledgedAt,resolvedAt,workOrderId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)");
 
 // Hourly accumulators, flushed on each hour boundary.
 interface Acc { n: number; a: number; b: number; c: number; d: number; e: number; f: number; last: string }
@@ -137,11 +137,11 @@ const seedTelemetry = db.transaction(() => {
       v[0] += m.pvW; v[1] += m.loadW; v[2] += m.plnW; v[3] += m.chargeW; v[4] += m.dischargeW; v[5] += m.curtailW; v[6] += 1;
       gAcc.set(id, v);
     };
-    for (const g of s.gangs) {
+    for (const g of s.zones) {
       addG(g.id, g);
       rt.pvW += g.pvW; rt.loadW += g.loadW; rt.plnW += g.plnW; rt.chargeW += g.chargeW; rt.dischargeW += g.dischargeW; rt.curtailW += g.curtailW;
     }
-    addG("RT", rt);
+    addG("CLUSTER", rt);
   }
   flushHour(hour);
 });
@@ -149,25 +149,26 @@ const seedTelemetry = db.transaction(() => {
 // Baseline PR must exist before registry rows are written.
 const baselines = new Map<string, number>();
 const seedStatic = db.transaction(() => {
-  for (const g of world.gangs) {
-    insGang.run(g.id, g.name, g.code, JSON.stringify(g.boundary), JSON.stringify({ alley: g.alley, label: [g.labelLng, g.labelLat] }));
+  for (const g of world.zones) {
+    insZone.run(g.id, g.name, g.code, JSON.stringify(g.boundary), JSON.stringify({ road: g.road, label: [g.labelLng, g.labelLat] }));
   }
-  insUser.run("U-DLH", "Ratna Wibowo", "dlh@doctorpv.id", hash, "dlh", realNow);
-  insUser.run("U-RT", "Agus Santoso", "admin.rt@doctorpv.id", hash, "admin_rt", realNow);
-  insUser.run("U-G1", "Dewi Lestari", "gang1@doctorpv.id", hash, "koordinator", realNow);
-  insUser.run("U-T1", "Budi Hartono", "teknisi1@doctorpv.id", hash, "teknisi", realNow);
-  db.prepare("INSERT INTO UserGang (userId,gangId) VALUES (?,?)").run("U-G1", "G1");
+  db.prepare("INSERT INTO Cluster (id,name,boundaryGeoJson) VALUES (?,?,?)").run("KLASTER-1", "Klaster Permukiman", JSON.stringify(world.boundary));
+  const owner = world.houses[0];
+  insUser.run("U-DLH", "Ratna Wibowo", "dlh@sunpulse.id", hash, "dlh", realNow, null);
+  insUser.run("U-ADM", "Agus Santoso", "admin@sunpulse.id", hash, "admin", realNow, null);
+  insUser.run("U-T1", "Budi Hartono", "teknisi1@sunpulse.id", hash, "teknisi", realNow, null);
+  insUser.run("U-W1", owner.ownerName, "warga.h01@sunpulse.id", hash, "warga", realNow, owner.id);
 
-  const insHouse = db.prepare("INSERT INTO House (id,gangId,ownerCode,ownerName,address,lat,lng) VALUES (?,?,?,?,?,?,?)");
+  const insHouse = db.prepare("INSERT INTO House (id,zoneId,ownerCode,ownerName,address,lat,lng,batteryId,gatewayId) VALUES (?,?,?,?,?,?,?,?,?)");
   const insSolar = db.prepare("INSERT INTO SolarSystem (id,houseId,capacityKwp,panelCount,inverterModel,tilt,azimuth,installDate,lat,lng,baselinePr,registryStatus) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
   for (const h of world.houses) {
-    insHouse.run(h.id, h.gangId, h.ownerCode, h.ownerName, h.address, h.lat, h.lng);
+    insHouse.run(h.id, h.zoneId, h.ownerCode, h.ownerName, h.address, h.lat, h.lng, h.batteryId, h.gatewayId);
     insSolar.run(`PV-${h.id}`, h.id, h.capacityKwp, h.panelCount, h.inverterModel, h.tilt, h.azimuth, today - h.ageDays * DAY, h.pvLat, h.pvLng, baselines.get(h.id) ?? h.pr, h.registryStatus);
   }
-  const insBatt = db.prepare("INSERT INTO Battery (id,gangId,chemistry,nominalCapacityKwh,nominalVoltage,installDate,lat,lng) VALUES (?,?,'LiFePO4',?,?,?,?,?)");
-  for (const b of world.batteries) insBatt.run(b.id, b.gangId, b.capacityKwh, b.nominalV, today - b.ageDays * DAY, b.lat, b.lng);
-  const insGw = db.prepare("INSERT INTO Gateway (id,gangId,firmware,lat,lng) VALUES (?,?,?,?,?)");
-  for (const g of world.gateways) insGw.run(g.id, g.gangId, g.firmware, g.lat, g.lng);
+  const insBatt = db.prepare("INSERT INTO Battery (id,zoneId,chemistry,nominalCapacityKwh,nominalVoltage,installDate,lat,lng) VALUES (?,?,'LiFePO4',?,?,?,?,?)");
+  for (const b of world.batteries) insBatt.run(b.id, b.zoneId, b.capacityKwh, b.nominalV, today - b.ageDays * DAY, b.lat, b.lng);
+  const insGw = db.prepare("INSERT INTO Gateway (id,zoneId,firmware,lat,lng) VALUES (?,?,?,?,?)");
+  for (const g of world.gateways) insGw.run(g.id, g.zoneId, g.firmware, g.lat, g.lng);
   db.prepare("INSERT INTO Setting (key,valueJson) VALUES ('seedDay',?)").run(String(demoDay));
 });
 
@@ -183,30 +184,30 @@ seedStatic();
 // Anomaly detection over the seeded history, using the same engine code as live analysis.
 const visibleRows = new Map<string, PvHourlyRow[]>();
 for (const [id, rows] of pvRows) visibleRows.set(id, rows.filter((r) => r.ts <= nowTs));
-const peersByGangDay = new Map<string, Map<number, number[]>>();
+const peersByDay = new Map<string, Map<number, number[]>>();
 const ratiosByHouse = new Map<string, ReturnType<typeof dailyRatios>>();
 for (const h of world.houses) {
   const ratios = dailyRatios(visibleRows.get(h.id) ?? [], weather, h.capacityKwp, baselines.get(h.id) ?? h.pr);
   ratiosByHouse.set(h.id, ratios);
-  const gangMap = peersByGangDay.get(h.gangId) ?? new Map<number, number[]>();
+  const zoneMap = peersByDay.get("ALL") ?? new Map<number, number[]>();
   for (const d of ratios) {
-    const list = gangMap.get(d.day) ?? [];
+    const list = zoneMap.get(d.day) ?? [];
     list.push(d.ratio);
-    gangMap.set(d.day, list);
+    zoneMap.set(d.day, list);
   }
-  peersByGangDay.set(h.gangId, gangMap);
+  peersByDay.set("ALL", zoneMap);
 }
 
 interface Found {
   assetType: "pv" | "battery";
   assetId: string;
-  gangId: string;
+  zoneId: string;
   anomaly: Anomaly;
   diagnosis: Diagnosis | null;
 }
 const found: Found[] = [];
 for (const h of world.houses) {
-  const peers = peersByGangDay.get(h.gangId) ?? new Map<number, number[]>();
+  const peers = peersByDay.get("ALL") ?? new Map<number, number[]>();
   const points = withPeers(ratiosByHouse.get(h.id) ?? [], peers);
   for (const anomaly of detectPvAnomalies(points)) {
     const f = pvFeatures(
@@ -216,13 +217,13 @@ for (const h of world.houses) {
     const diagnosis = runPvDiagnosis(f);
     const top = diagnosis.causes[0].key;
     // A suspected sensor is reported as needing verification, never as a failed PV system.
-    const shaped: Anomaly = top === "sensor" ? { ...anomaly, pattern: "sensor", severity: "medium" } : top === "inverter" ? { ...anomaly, pattern: "sudden_zero" } : anomaly;
-    found.push({ assetType: "pv", assetId: h.id, gangId: h.gangId, anomaly: shaped, diagnosis });
+    const shaped: Anomaly = top === "sensor" ? { ...anomaly, pattern: "sensor", severity: "medium" } : top === "inverter" ? { ...anomaly, pattern: "sudden_zero" } : top === "shading" ? { ...anomaly, pattern: "partial" } : anomaly;
+    found.push({ assetType: "pv", assetId: h.id, zoneId: h.zoneId, anomaly: shaped, diagnosis });
   }
 }
 for (const b of world.batteries) {
   const mine = [...(battDaily.get(b.id)?.entries() ?? [])].sort((x, y) => x[0] - y[0]);
-  const siblings = world.batteries.filter((o) => o.gangId === b.gangId && o.id !== b.id);
+  const siblings = world.batteries.filter((o) => o.id !== b.id);
   const days = mine.map(([day, row]) => ({
     ...row,
     peerMaxTempC: median(siblings.map((o) => battDaily.get(o.id)?.get(day)?.maxTempC ?? row.maxTempC)),
@@ -240,7 +241,7 @@ for (const b of world.batteries) {
       bmsAlarm: anomaly.pattern === "thermal",
       implausibleSteps: false,
     });
-    found.push({ assetType: "battery", assetId: b.id, gangId: b.gangId, anomaly, diagnosis });
+    found.push({ assetType: "battery", assetId: b.id, zoneId: b.zoneId, anomaly, diagnosis });
   }
 }
 
@@ -258,7 +259,7 @@ const TYPE_BY_CAUSE: Record<string, AlertType> = {
 const seedAlerts = db.transaction(() => {
   // Open alerts come from the live rules at the seeded instant, so the live engine finds them already open.
   const sample = snapshot;
-  const open = new Map<string, { assetType: "pv" | "battery"; gangId: string; condition: Condition; from: number }>();
+  const open = new Map<string, { assetType: "pv" | "battery"; zoneId: string; condition: Condition; from: number }>();
   if (sample) {
     for (const p of sample.pv) {
       if (p.offline) continue;
@@ -268,13 +269,13 @@ const seedAlerts = db.transaction(() => {
       const conds = evaluatePv({ id: p.id, acW: p.acW, dcV: p.dcV, dcI: p.dcI, inverter: p.inverter, ratio: exp > 0 ? p.acW / exp : 1 }, sample.g) ?? [];
       for (const c of conds) {
         const f = activeFaults(faultIndex, p.id, sample.ts)[0];
-        open.set(`${p.id}:${c.type}`, { assetType: "pv", gangId: h.gangId, condition: c, from: f?.from ?? sample.ts - 3600 });
+        open.set(`${p.id}:${c.type}`, { assetType: "pv", zoneId: h.zoneId, condition: c, from: f?.from ?? sample.ts - 3600 });
       }
     }
     for (const b of sample.batteries) {
       for (const c of evaluateBattery(b)) {
         const f = activeFaults(faultIndex, b.id, sample.ts)[0];
-        open.set(`${b.id}:${c.type}`, { assetType: "battery", gangId: b.gangId, condition: c, from: f?.from ?? today - 3 * DAY });
+        open.set(`${b.id}:${c.type}`, { assetType: "battery", zoneId: b.zoneId, condition: c, from: f?.from ?? today - 3 * DAY });
       }
     }
   }
@@ -284,7 +285,7 @@ const seedAlerts = db.transaction(() => {
     if (h) {
       open.set(`${h.id}:device_offline`, {
         assetType: "pv",
-        gangId: h.gangId,
+        zoneId: h.zoneId,
         from: off.from,
         condition: {
           type: "device_offline",
@@ -308,7 +309,7 @@ const seedAlerts = db.transaction(() => {
     const sudden = a.condition.type === "inverter_trip" || a.condition.type === "device_offline";
     const raisedAt = sudden ? a.from : (detected?.anomaly.from ?? today - 3 * DAY) + (8.4 + n * 0.35) * 3600;
     a.from = raisedAt;
-    insAlert.run(id, a.assetType, assetId, a.gangId, a.condition.type, a.condition.priority, a.condition.message, a.condition.recommendedAction, "open", raisedAt, null, null, null);
+    insAlert.run(id, a.assetType, assetId, a.zoneId, a.condition.type, a.condition.priority, a.condition.message, a.condition.recommendedAction, "open", raisedAt, null, null, null);
   }
 
   let pn = 0;
@@ -327,12 +328,12 @@ const seedAlerts = db.transaction(() => {
       alertId = `HIST-${String(pn).padStart(3, "0")}`;
       const priority = f.anomaly.severity;
       const closed = f.anomaly.to + DAY;
-      insAlert.run(alertId, f.assetType, f.assetId, f.gangId, type, priority, `${anomalyTitle(f.anomaly.pattern)} pada ${f.assetId}.`, f.diagnosis?.causes[0]?.action ?? "Periksa aset.", "resolved", f.anomaly.from + 8 * 3600, "Budi Hartono", f.anomaly.from + 8 * 3600 + 1800 + (pn % 5) * 900, Math.min(closed, nowTs - 3600));
+      insAlert.run(alertId, f.assetType, f.assetId, f.zoneId, type, priority, `${anomalyTitle(f.anomaly.pattern)} pada ${f.assetId}.`, f.diagnosis?.causes[0]?.action ?? "Periksa aset.", "resolved", f.anomaly.from + 8 * 3600, "Budi Hartono", f.anomaly.from + 8 * 3600 + 1800 + (pn % 5) * 900, Math.min(closed, nowTs - 3600));
     }
     const openPriority = ongoing && matchKey ? open.get(matchKey)?.condition.priority : undefined;
     const openedAt = ongoing && matchKey ? open.get(matchKey)?.from : undefined;
     const payload: AnomalyPayload = { ...f.anomaly, from: openedAt ?? f.anomaly.from, severity: openPriority ?? f.anomaly.severity, title: anomalyTitle(f.anomaly.pattern), open: Boolean(ongoing && matchKey), diagnosis: f.diagnosis };
-    insPred.run(`ANM-${String(pn).padStart(3, "0")}`, f.assetType, f.assetId, f.gangId, "anomaly", JSON.stringify(payload), f.diagnosis?.confidence ?? 0.5, MODEL_VERSION, alertId, f.anomaly.from);
+    insPred.run(`ANM-${String(pn).padStart(3, "0")}`, f.assetType, f.assetId, f.zoneId, "anomaly", JSON.stringify(payload), f.diagnosis?.confidence ?? 0.5, MODEL_VERSION, alertId, f.anomaly.from);
   }
 
   // Open alerts that daily analysis cannot see, such as SoH past threshold, still receive a diagnosis.
@@ -366,7 +367,7 @@ const seedAlerts = db.transaction(() => {
       open: true,
       diagnosis,
     };
-    insPred.run(`ANM-${String(pn).padStart(3, "0")}`, a.assetType, assetId, a.gangId, "anomaly", JSON.stringify(payload), diagnosis?.confidence ?? 0.5, MODEL_VERSION, openIds.get(key) ?? null, a.from);
+    insPred.run(`ANM-${String(pn).padStart(3, "0")}`, a.assetType, assetId, a.zoneId, "anomaly", JSON.stringify(payload), diagnosis?.confidence ?? 0.5, MODEL_VERSION, openIds.get(key) ?? null, a.from);
   }
   return { open: [...open.keys()], anomalies: pn };
 });

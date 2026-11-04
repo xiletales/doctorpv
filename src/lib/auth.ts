@@ -19,7 +19,6 @@ export const authOptions: NextAuthOptions = {
         if (!parsed.success) return null;
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email.toLowerCase() },
-          include: { gangs: true },
         });
         if (!user || !user.active) return null;
         const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
@@ -29,7 +28,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role as Role,
-          gangIds: user.gangs.map((g) => g.gangId),
+          houseId: user.houseId,
         };
       },
     }),
@@ -39,7 +38,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        token.gangIds = user.gangIds;
+        token.houseId = user.houseId;
       }
       return token;
     },
@@ -49,7 +48,7 @@ export const authOptions: NextAuthOptions = {
         name: token.name ?? "",
         email: token.email ?? "",
         role: token.role,
-        gangIds: token.gangIds,
+        houseId: token.houseId,
       };
       return session;
     },

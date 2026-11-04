@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Lightbulb } from "lucide-react";
 import { useMemo, useState } from "react";
 import { axisTooltip, EChart, FONT, grid, legend, timeAxis, tooltip, useChartTheme, valueAxis, type ChartTheme } from "@/components/charts/echart";
-import { GangFilter, StatTile } from "@/components/domain/asset-parts";
+import { StatTile } from "@/components/domain/asset-parts";
 import { EnergyFlow, type FlowValues } from "@/components/domain/energy-flow";
 import { DisclaimerNote, ErrorState, PageTitle } from "@/components/domain/status";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { apiGet } from "@/lib/client";
 import type { EnergyDto, EnergyPoint, EnergyTotals } from "@/lib/energy-dto";
 import { num, rupiah } from "@/lib/format";
 import { useLive } from "@/stores/live";
-import { useUi } from "@/stores/ui";
 
 function sankeyOption(tot: EnergyTotals, t: ChartTheme) {
   const pvDirect = Math.max(0, tot.pv - tot.charge - tot.curtail);
@@ -78,21 +77,20 @@ function SourceChart({ curve, dayStart }: { curve: EnergyPoint[]; dayStart: numb
 }
 
 export function EnergyView() {
-  const gangId = useUi((s) => s.gangId);
   const snapshot = useLive((s) => s.snapshot);
   const [day, setDay] = useState<"today" | "yesterday">("yesterday");
   const t = useChartTheme();
   const q = useQuery({
-    queryKey: ["energy", gangId],
-    queryFn: () => apiGet<EnergyDto>(`/api/v1/energy${gangId ? `?gangId=${gangId}` : ""}`),
+    queryKey: ["energy"],
+    queryFn: () => apiGet<EnergyDto>("/api/v1/energy"),
     refetchInterval: 60_000,
   });
   const flow = useMemo<FlowValues | null>(() => {
     if (!snapshot) return null;
-    const list = gangId ? snapshot.gangs.filter((g) => g.id === gangId) : snapshot.gangs;
+    const list = snapshot.zones;
     const sum = (f: (g: (typeof list)[number]) => number) => list.reduce((a, g) => a + f(g), 0);
     return { pvW: sum((g) => g.pvW), loadW: sum((g) => g.loadW), plnW: sum((g) => g.plnW), chargeW: sum((g) => g.chargeW), dischargeW: sum((g) => g.dischargeW), curtailW: sum((g) => g.curtailW), soc: sum((g) => g.avgSoc) / Math.max(list.length, 1) };
-  }, [snapshot, gangId]);
+  }, [snapshot]);
   const d = q.data;
   const selected = d ? (day === "today" ? d.today : d.yesterday) : null;
   const tot = selected?.totals;
@@ -107,9 +105,9 @@ export function EnergyView() {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <PageTitle title="Energi hibrida" description="Aliran energi antara PV, baterai bersama, PLN, dan beban rumah." action={<GangFilter />} />
+      <PageTitle title="Energi hibrida" description="Aliran energi antara PV, baterai bersama, PLN, dan beban rumah." />
 
-      <section className="grid items-center gap-4 rounded-2xl bg-rail p-5 text-white lg:grid-cols-[3fr_2fr]">
+      <section className="hairline relative grid items-center gap-4 rounded-3xl bg-[#0b1220] p-5 text-white lg:grid-cols-[3fr_2fr]">
         {flow ? <EnergyFlow v={flow} /> : <Skeleton className="h-60 opacity-20" />}
         <div>
           <p className="text-sm text-slate-400">Aliran saat ini, {d?.scopeLabel ?? "memuat"}</p>
@@ -160,8 +158,8 @@ export function EnergyView() {
                 <tbody className="text-ink-2">
                   <tr className="border-b border-line"><td className="num py-1.5 pr-4">M1</td><td className="py-1.5 pr-4">Keluaran AC inverter tiap rumah</td><td className="py-1.5">Produksi PV</td></tr>
                   <tr className="border-b border-line"><td className="num py-1.5 pr-4">M2</td><td className="py-1.5 pr-4">Panel beban tiap rumah</td><td className="py-1.5">Beban rumah</td></tr>
-                  <tr className="border-b border-line"><td className="num py-1.5 pr-4">M3</td><td className="py-1.5 pr-4">Bus gang, bank baterai</td><td className="py-1.5">Pengisian dan pengosongan</td></tr>
-                  <tr><td className="num py-1.5 pr-4">M4</td><td className="py-1.5 pr-4">Bus gang, sambungan PLN</td><td className="py-1.5">Impor PLN</td></tr>
+                  <tr className="border-b border-line"><td className="num py-1.5 pr-4">M3</td><td className="py-1.5 pr-4">Tiap baterai</td><td className="py-1.5">Pengisian dan pengosongan</td></tr>
+                  <tr><td className="num py-1.5 pr-4">M4</td><td className="py-1.5 pr-4">Klaster, sambungan PLN</td><td className="py-1.5">Impor PLN</td></tr>
                 </tbody>
               </table>
             </div>
