@@ -184,7 +184,7 @@ export function buildWorld(center: LatLng): World {
         tempOffset: (rand() - 0.5) * 3,
       });
     }
-    const gw = geo(0, y + 4.5);
+    const gw = geo(-9, y + 4.5);
     world.gateways.push({ id: gatewayId, zoneId, firmware: `2.${3 + (z % 2)}.1`, lat: gw.lat, lng: gw.lng });
   });
   return world;
