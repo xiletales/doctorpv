@@ -15,6 +15,7 @@ import { useUi } from "@/stores/ui";
 import { SessionContext } from "./session-context";
 import { TopbarLive } from "./topbar-live";
 import { CommandPalette } from "./command-palette";
+import { LiveProvider } from "./live-provider";
 
 const ICONS: Record<string, LucideIcon> = {
   gauge: Gauge, map: Map, home: Home, battery: Battery, zap: Zap, brain: BrainCircuit, wrench: Wrench,
@@ -197,6 +198,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
         </div>
       </div>
       <CommandPalette items={items} />
+      <LiveProvider />
     </SessionContext.Provider>
   );
 }
