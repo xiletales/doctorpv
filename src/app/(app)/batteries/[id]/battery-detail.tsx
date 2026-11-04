@@ -11,6 +11,7 @@ import type { BatteryDetail } from "@/lib/detail-dto";
 import { longDate, num } from "@/lib/format";
 import type { RingPoint } from "@/lib/live/store";
 import { useLive } from "@/stores/live";
+import { areaLabel } from "@/lib/site";
 
 const pickTemp = (p: RingPoint) => p.a;
 
@@ -159,7 +160,7 @@ export function BatteryDetailView({ id }: { id: string }) {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <DetailHeader back="/batteries" backLabel="Kesehatan baterai" id={id} subtitle={`Melayani ${d.servedHouses.join(" dan ")}, ${d.zoneId.replace("Z", "Zona ")}, ${d.chemistry} ${num(d.capacityKwh, 2)} kWh, ${num(d.nominalVoltage, 1)} V, dipasang ${longDate(d.installDate)}`} status={b?.status} assetParam={id} />
+      <DetailHeader back="/batteries" backLabel="Kesehatan baterai" id={id} subtitle={`Melayani ${d.servedHouses.join(" dan ")}, ${areaLabel(d.zoneId)}, ${d.chemistry} ${num(d.capacityKwh, 2)} kWh, ${num(d.nominalVoltage, 1)} V, dipasang ${longDate(d.installDate)}`} status={b?.status} assetParam={id} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="px-4 py-3">

@@ -20,7 +20,9 @@
     "prebuild": "node scripts/check-terms.mjs && node scripts/copy-map-worker.mjs",
     "postinstall": "prisma generate",
     "db:push": "prisma db push && prisma db execute --file prisma/enable-rls.sql",
-    "db:verify-rls": "tsx scripts/verify-rls.ts"
+    "db:verify-rls": "tsx scripts/verify-rls.ts",
+    "demo:local": "tsx scripts/demo-local.ts",
+    "db:local": "tsx scripts/demo-local.ts --db-only"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
@@ -59,6 +61,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "dotenv": "^18.0.9",
+    "embedded-postgres": "^18.6.0-beta.19",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.5",
     "prettier": "^3.9.10",

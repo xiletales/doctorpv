@@ -1,10 +1,12 @@
 # SUNPULSE
 
-**Denyut energi klaster permukiman Anda.**
+**SUNPULSE: Sistem Manajemen Energi Hibrida PLTS-Baterai-PLN Berbasis AIoT dengan Fault Detection and Diagnosis, Predictive Maintenance, dan Battery Health Management pada Klaster Permukiman**
 
-Sistem Manajemen Energi Hibrida PLTS-Baterai-PLN berbasis AIoT dengan Fault Detection and Diagnosis, Predictive Maintenance, dan Battery Health Management pada klaster permukiman. Prototipe lomba dengan **data simulasi**.
+Denyut energi klaster permukiman Anda. Dokter jaga AI-IoT untuk PLTS Kampung Iklim RW 1, Kelurahan Panularan, Kecamatan Laweyan, Kota Surakarta. Mitra: DLH Kota Surakarta. Prototipe lomba dengan **data simulasi**.
 
-Satu klaster: 30 rumah dengan PV atap, 15 baterai bersama (1 baterai melayani 2 rumah bertetangga), dan 3 gateway IoT.
+Satu klaster: 30 titik PV (27 rumah dan 3 fasilitas umum), 15 baterai bersama (1 baterai melayani 2 titik bertetangga), dan 3 gateway IoT.
+
+**Yang perlu diketahui:** pusat peta mendekati Panularan, tetapi posisi rumah dan pembagian RT adalah hasil generator, bukan survei. Nama RT dan fasilitas diatur di `src/lib/site.ts`.
 
 ## Menjalankan
 
@@ -34,6 +36,12 @@ npm run demo           # aplikasi dan simulator
 npm run db:verify-rls  # di terminal kedua, saat aplikasi berjalan
 ```
 
+Tanpa Supabase dan tanpa internet, pakai Postgres lokal. Data tersimpan di `.local-pg/`, dan kredensial di `.env` tidak dipakai:
+
+```bash
+npm run demo:local
+```
+
 Buka http://localhost:3000. `npm run demo` memperbarui skema, menyusun ulang data bila berasal dari hari lain, lalu menjalankan aplikasi dan simulator.
 
 Untuk pengembangan: `npm run dev`, dan `npm run simulate` di terminal kedua.
@@ -51,7 +59,7 @@ Kata sandi semua akun: `demo1234`
 | Email | Peran | Akses |
 |---|---|---|
 | `dlh@sunpulse.id` | Super Admin DLH | Seluruh data dan kontrol demo |
-| `admin@sunpulse.id` | Admin Klaster | Pengelolaan klaster dan kontrol demo |
+| `pengurus@sunpulse.id` | Pengurus RW 1 | Pengelolaan RW 1 dan kontrol demo |
 | `teknisi1@sunpulse.id` | Teknisi | Pemantauan, alert, dan pekerjaan, tanpa nama pemilik |
 | `warga.h01@sunpulse.id` | Warga | Hanya rumah H01 dan status baterainya |
 
@@ -99,7 +107,7 @@ Keluaran selalu diberi label estimasi dan perlu diverifikasi teknisi. Pengujian 
 
 ## Asumsi
 
-- Koordinat adalah placeholder. Ubah `NEXT_PUBLIC_MAP_CENTER_LAT` dan `NEXT_PUBLIC_MAP_CENTER_LNG` di `.env`, lalu jalankan `npm run seed`. Tata letak rumah tetap hasil generator.
+- Pusat peta (-7,5741; 110,8124) adalah perkiraan Kelurahan Panularan dari OpenStreetMap. Ubah `NEXT_PUBLIC_MAP_CENTER_LAT` dan `NEXT_PUBLIC_MAP_CENTER_LNG` di `.env`, lalu susun ulang data. Tata letak rumah tetap hasil generator.
 - Tidak ada kredit ekspor PLN, sehingga surplus PV dicatat sebagai curtail. Nilai ini ditetapkan dalam kode dan dilabeli di layar.
 - Tarif PLN (`PLN_TARIFF_RP`) dan faktor emisi (`GRID_EMISSION_FACTOR`) adalah estimasi yang perlu dikonfirmasi ke sumber resmi.
 - Satu baterai 51,2 V 200 Ah (10,24 kWh) LiFePO₄.

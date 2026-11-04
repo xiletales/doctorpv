@@ -54,12 +54,24 @@ export function pvPowerW(capacityKwp: number, g: number, ambient: number, pr: nu
   return Math.max(0, capacityKwp * 1000 * (g / 1000) * pr * (1 + GAMMA * (t - 25)));
 }
 
-/** Indonesian household pattern: morning peak, low midday, strong evening peak 18:00 to 22:00. */
-export function loadW(index: number, scale: number, ts: number): number {
+const bump = (h: number, center: number, width: number) => Math.exp(-Math.pow(h - center, 2) / width);
+
+/**
+ * Load by building type. Homes: morning peak, low midday, strong evening peak 18:00 to 22:00.
+ * Musala: evening-heavy around the prayer times. School and hall: daytime-heavy.
+ */
+export function loadW(index: number, scale: number, ts: number, kind: "rumah" | "musala" | "balai" | "sekolah" = "rumah"): number {
   const h = hourOfDay(ts);
-  const morning = 300 * Math.exp(-Math.pow(h - 6.5, 2) / 1.6);
-  const evening = 650 * Math.exp(-Math.pow(h - 19.5, 2) / 4.2);
-  const midday = 120 * Math.exp(-Math.pow(h - 13, 2) / 6);
   const noise = 0.85 + 0.3 * hash01(index, Math.floor(ts / 900));
+  if (kind === "musala") return (60 + 350 * bump(h, 4.8, 0.3) + 250 * bump(h, 12, 0.3) + 800 * bump(h, 18, 0.5) + 900 * bump(h, 19.25, 0.5)) * noise;
+  if (kind === "balai") return (70 + (h >= 8 && h < 15 ? 520 : 0) + 450 * bump(h, 20, 1.2)) * noise;
+  if (kind === "sekolah") {
+    const weekday = new Date(ts * 1000 + 7 * 3600 * 1000).getUTCDay();
+    const inSession = weekday >= 1 && weekday <= 5 && h >= 7 && h < 14;
+    return (80 + (inSession ? 1100 : 0)) * noise;
+  }
+  const morning = 300 * bump(h, 6.5, 1.6);
+  const evening = 650 * bump(h, 19.5, 4.2);
+  const midday = 120 * bump(h, 13, 6);
   return (140 + morning + midday + evening) * scale * noise;
 }

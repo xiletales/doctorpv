@@ -11,17 +11,30 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, Skeleton } from "@/components/ui/card";
 import { median } from "@/lib/ai/stats";
 import { num } from "@/lib/format";
+import { facilityOf } from "@/lib/site";
 import type { PvLive } from "@/lib/live/store";
 import type { AssetStatus } from "@/lib/types";
 import { useLive } from "@/stores/live";
 import { useUi } from "@/stores/ui";
+import { areaLabel } from "@/lib/site";
 
 const specificYield = (p: PvLive) => p.todayKwh / p.capacityKwp;
 
 const col = createColumnHelper<PvLive>();
 const columns = [
-  col.accessor("id", { header: "ID", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
-  col.accessor("zoneId", { header: "Zone", cell: (c) => c.getValue().replace("Z", "Zona ") }),
+  col.accessor("id", {
+    header: "ID",
+    cell: (c) => {
+      const facility = facilityOf(c.getValue());
+      return (
+        <span className="flex items-center gap-2">
+          <span className="num font-medium">{c.getValue()}</span>
+          {facility ? <span className="whitespace-nowrap rounded-full bg-st-maintenance-soft px-2 py-0.5 text-[11px] text-st-maintenance">{facility.name}</span> : null}
+        </span>
+      );
+    },
+  }),
+  col.accessor("zoneId", { header: "Zone", cell: (c) => areaLabel(c.getValue()) }),
   col.accessor("capacityKwp", { header: "Kapasitas", cell: (c) => <span className="num">{num(c.getValue(), 2)} kWp</span> }),
   col.accessor("acW", { header: "Daya kini", cell: (c) => <span className="num">{num(c.getValue() / 1000, 2)} kW</span> }),
   col.accessor("todayKwh", { header: "Hari ini", cell: (c) => <span className="num">{num(c.getValue(), 1)} kWh</span> }),

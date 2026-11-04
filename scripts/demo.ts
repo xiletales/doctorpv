@@ -1,6 +1,6 @@
 // One command for the pitch: checks env, updates the database, re-seeds if the data is from another day, and starts everything.
 import { execSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { config } from "dotenv";
 
 const run = (cmd: string) => execSync(cmd, { stdio: "inherit" });
@@ -29,9 +29,13 @@ async function main() {
     console.log("Data simulasi belum ada atau dari hari lain. Menyusun ulang untuk hari ini...");
     run("npx tsx prisma/seed.ts");
   }
-  if (!existsSync(".next/BUILD_ID")) {
+  // A build from another commit would serve an old UI, so it is rebuilt when the commit changes.
+  const commit = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+  const stamp = ".next/sunpulse-commit";
+  if (!existsSync(".next/BUILD_ID") || !existsSync(stamp) || readFileSync(stamp, "utf8") !== commit) {
     console.log("Membangun aplikasi...");
     run("npm run -s build");
+    writeFileSync(stamp, commit);
   }
 
   const children: ChildProcess[] = [];
@@ -47,7 +51,7 @@ async function main() {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
-  console.log("\nSUNPULSE: http://localhost:3000  (Shift+D membuka kontrol demo)\n");
+  console.log(`\nSUNPULSE: http://localhost:${process.env.PORT ?? 3000}  (Shift+D membuka kontrol demo)\n`);
 }
 
 main().catch((err: unknown) => {

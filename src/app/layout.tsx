@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { PROJECT_TITLE, SITE } from "@/lib/site";
 import "./globals.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -9,8 +10,8 @@ const grotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-grotesk" }
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
-  title: "SUNPULSE",
-  description: "Sistem Manajemen Energi Hibrida PLTS-Baterai-PLN berbasis AIoT untuk klaster permukiman",
+  title: PROJECT_TITLE,
+  description: `${SITE.name}, ${SITE.area}. Prototipe dengan data simulasi.`,
   icons: { icon: "/icon.svg" },
 };
 

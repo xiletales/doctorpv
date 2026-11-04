@@ -18,6 +18,7 @@ import { dateTime, num } from "@/lib/format";
 import { ALERT_STATUS_LABEL, type AlertPriority, type AlertStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
+import { areaLabel } from "@/lib/site";
 
 function assetHref(a: AlertDto): string | null {
   if (a.assetType === "pv") return `/solar/${a.assetId}`;
@@ -93,7 +94,7 @@ function AlertRow({ a, onChange, busy }: { a: AlertDto; onChange: (id: string, s
           <span className="flex flex-wrap items-center gap-2">
             <PriorityBadge priority={a.priority} />
             <span className="num text-sm font-semibold text-ink">{a.assetId}</span>
-            <span className="text-xs text-ink-3">{ALERT_TYPE_LABEL[a.type]}, {a.zoneId.replace("Z", "Zona ")}</span>
+            <span className="text-xs text-ink-3">{ALERT_TYPE_LABEL[a.type]}, {areaLabel(a.zoneId)}</span>
           </span>
           <span className="mt-1 flex items-start gap-1 text-sm text-ink">
             {a.message}

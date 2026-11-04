@@ -21,6 +21,7 @@ import { dateTime, num, shortDate } from "@/lib/format";
 import type { AlertPriority, AssetStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
+import { areaLabel } from "@/lib/site";
 
 const METHOD_LABEL: Record<AnomalyMethod, string> = {
   residual: "Residual terhadap ekspektasi",
@@ -99,7 +100,7 @@ function DiagnosisCard({ a }: { a: AnomalyDto }) {
           {path ? <Link href={path} className="num hover:underline">{a.assetId}</Link> : <span className="num">{a.assetId}</span>}: {a.payload.title}
         </p>
         <p className="mt-0.5 text-xs text-ink-3">
-          {a.zoneId.replace("Z", "Zona ")}, sejak {dateTime(a.payload.from)}, {a.payload.open ? "masih berlangsung" : "sudah berakhir"}
+          {areaLabel(a.zoneId)}, sejak {dateTime(a.payload.from)}, {a.payload.open ? "masih berlangsung" : "sudah berakhir"}
         </p>
       </div>
       <div className="space-y-5 p-5">
@@ -156,7 +157,7 @@ function AnomalyTab() {
 
   if (q.isError) return <Card><ErrorState message={(q.error as Error).message} /></Card>;
   if (!q.data) return <Skeleton className="h-96 rounded-2xl" />;
-  if (list.length === 0) return <Card><EmptyState title="Tidak ada anomali untuk zona ini" hint="Pilih zona lain atau tampilkan semua zona." /></Card>;
+  if (list.length === 0) return <Card><EmptyState title="Tidak ada anomali untuk area ini" hint="Pilih area lain atau tampilkan semua area." /></Card>;
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(320px,2fr)_3fr]">
@@ -199,7 +200,7 @@ const col = createColumnHelper<HealthRow>();
 const columns = [
   col.accessor("id", { header: "Aset", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
   col.accessor("type", { header: "Jenis", cell: (c) => (c.getValue() === "pv" ? "PV" : "Baterai") }),
-  col.accessor("zoneId", { header: "Zone", cell: (c) => c.getValue().replace("Z", "Zona ") }),
+  col.accessor("zoneId", { header: "Zone", cell: (c) => areaLabel(c.getValue()) }),
   col.accessor((r) => r.score.score, { id: "score", header: "Skor", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
   col.accessor((r) => r.score.band, { id: "band", header: "Kategori", cell: (c) => BAND_LABEL[c.getValue()] }),
   col.accessor("status", { header: "Status", cell: (c) => <StatusBadge status={c.getValue() as AssetStatus} /> }),
@@ -271,7 +272,7 @@ function HealthTab() {
         {current ? (
           <Card className="p-5 xl:sticky xl:top-4">
             <p className="num text-lg font-semibold text-ink">{current.id}</p>
-            <p className="mb-3 text-xs text-ink-3">{current.type === "pv" ? "Sistem PV" : "Baterai"}, {current.zoneId.replace("Z", "Zona ")}</p>
+            <p className="mb-3 text-xs text-ink-3">{current.type === "pv" ? "Sistem PV" : "Baterai"}, {areaLabel(current.zoneId)}</p>
             <HealthScoreRing score={current.score.score} size={84} />
             <h3 className="mt-4 text-xs font-semibold text-ink-2">Faktor penyusun skor</h3>
             <ul className="mt-2 space-y-2.5">

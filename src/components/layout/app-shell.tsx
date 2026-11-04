@@ -117,7 +117,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             {!collapsed ? (
               <div className="leading-tight">
                 <p className="display text-sm font-bold tracking-wide text-white">SUNPULSE</p>
-                <p className="text-[11px] text-slate-400">Klaster permukiman, 30 rumah</p>
+                <p className="text-[11px] text-slate-400">Kampung Iklim RW 1</p>
               </div>
             ) : null}
           </div>

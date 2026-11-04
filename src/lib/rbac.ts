@@ -9,7 +9,7 @@ export type Action =
 
 const ACTIONS: Record<Role, Action[]> = {
   dlh: ["alerts:write", "demo:control", "owner:viewAll", "workorders:create", "workorders:update"],
-  admin: ["alerts:write", "demo:control", "owner:viewAll", "workorders:create", "workorders:update"],
+  pengurus: ["alerts:write", "demo:control", "owner:viewAll", "workorders:create", "workorders:update"],
   teknisi: ["alerts:write", "workorders:update"],
   warga: [],
 };
@@ -30,7 +30,7 @@ export interface NavItem {
   roles: Role[];
 }
 
-const STAFF: Role[] = ["dlh", "admin", "teknisi"];
+const STAFF: Role[] = ["dlh", "pengurus", "teknisi"];
 
 export const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dasbor", group: "Pemantauan", icon: "gauge", roles: STAFF },
@@ -42,7 +42,7 @@ export const NAV: NavItem[] = [
   { href: "/alerts", label: "Pusat Notifikasi", group: "Operasional", icon: "siren", roles: STAFF },
   { href: "/maintenance", label: "Pemeliharaan", group: "Operasional", icon: "wrench", roles: STAFF },
   { href: "/about", label: "Arsitektur Sistem", group: "Sistem", icon: "info", roles: STAFF },
-  { href: "/demo", label: "Kontrol Demo", group: "Sistem", icon: "sliders", roles: ["dlh", "admin"] },
+  { href: "/demo", label: "Kontrol Demo", group: "Sistem", icon: "sliders", roles: ["dlh", "pengurus"] },
 ];
 
 export function navFor(role: Role): NavItem[] {

@@ -19,10 +19,12 @@ import { dateTime, longDate, num } from "@/lib/format";
 import type { BatteryLive, GatewayLive, PvLive } from "@/lib/live/store";
 import type { MapBattery, MapData, MapGateway, MapHouse } from "@/lib/map-dto";
 import { NAV } from "@/lib/rbac";
+import { facilityOf } from "@/lib/site";
 import { STATUS_LABEL, type AssetStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/stores/live";
 import { ensureAllIcons, ensureIcon, STATUS_COLOR } from "./icons";
+import { areaLabel } from "@/lib/site";
 
 setWorkerUrl("/maplibre-gl-worker.mjs");
 
@@ -111,7 +113,7 @@ function DrawerShell({ title, subtitle, status, onClose, children, href }: { tit
 
 function HouseDrawer({ house, live, onClose }: { house: MapHouse; live?: PvLive; onClose: () => void }) {
   return (
-    <DrawerShell title={house.id} subtitle={`${house.zoneId.replace("Z", "Zona ")}, ${house.address}`} status={live?.status ?? "offline"} onClose={onClose} href={`/solar/${house.id}`}>
+    <DrawerShell title={house.id} subtitle={`${areaLabel(house.zoneId)}, ${house.address}`} status={live?.status ?? "offline"} onClose={onClose} href={`/solar/${house.id}`}>
       <HealthScoreRing score={live?.health ?? 0} />
       <dl className="divide-y divide-line">
         <Row label="Daya saat ini" value={<span className="num">{num((live?.acW ?? 0) / 1000, 2)} kW</span>} />
@@ -131,7 +133,7 @@ function HouseDrawer({ house, live, onClose }: { house: MapHouse; live?: PvLive;
 
 function BatteryDrawer({ battery, live, served, onClose }: { battery: MapBattery; live?: BatteryLive; served: string[]; onClose: () => void }) {
   return (
-    <DrawerShell title={battery.id} subtitle={`${battery.zoneId.replace("Z", "Zona ")}, ${battery.chemistry} ${num(battery.capacityKwh, 2)} kWh`} status={live?.status ?? "offline"} onClose={onClose} href={`/batteries/${battery.id}`}>
+    <DrawerShell title={battery.id} subtitle={`${areaLabel(battery.zoneId)}, ${battery.chemistry} ${num(battery.capacityKwh, 2)} kWh`} status={live?.status ?? "offline"} onClose={onClose} href={`/batteries/${battery.id}`}>
       <HealthScoreRing score={live?.health ?? 0} />
       <div>
         <div className="mb-1 flex justify-between text-sm"><span className="text-ink-3">State of Charge</span><span className="num text-ink">{num(live?.soc, 1)}%</span></div>
@@ -155,7 +157,7 @@ function BatteryDrawer({ battery, live, served, onClose }: { battery: MapBattery
 
 function GatewayDrawer({ gateway, live, onClose }: { gateway: MapGateway; live?: GatewayLive; onClose: () => void }) {
   return (
-    <DrawerShell title={gateway.id} subtitle={`Gateway ${gateway.zoneId.replace("Z", "Zona ")}`} status={live?.online === false ? "offline" : "normal"} onClose={onClose}>
+    <DrawerShell title={gateway.id} subtitle={`Gateway ${areaLabel(gateway.zoneId)}`} status={live?.online === false ? "offline" : "normal"} onClose={onClose}>
       <dl className="divide-y divide-line">
         <Row label="Koneksi" value={live?.online === false ? "Terputus" : "Tersambung"} />
         <Row label="Estimasi antrean buffer" value={<span className="num">{num(live?.bufferEstimate ?? 0)} pesan</span>} />
@@ -233,7 +235,7 @@ export function MapView() {
       const live = pvById.get(h.id);
       const status: AssetStatus = live?.status ?? "normal";
       if (!matches(status, statusFilter)) return [];
-      return [{ type: "Feature", id: Number(h.id.slice(1)), geometry: { type: "Point", coordinates: [h.lng, h.lat] }, properties: { id: h.id, kind: "house", status, icon: `house-${status}`, kwh: live?.todayKwh ?? 0 } }];
+      return [{ type: "Feature", id: Number(h.id.slice(1)), geometry: { type: "Point", coordinates: [h.lng, h.lat] }, properties: { id: h.id, kind: "house", status, icon: `${facilityOf(h.id) ? "facility" : "house"}-${status}`, kwh: live?.todayKwh ?? 0 } }];
     }),
   }), [q.data, pvById, statusFilter]);
 
@@ -363,7 +365,7 @@ export function MapView() {
   const selGw = selected?.kind === "gateway" ? q.data.gateways.find((g) => g.id === selected.id) : undefined;
 
   const layerToggles: { key: keyof typeof layers; label: string }[] = [
-    { key: "zones", label: "Batas zona" },
+    { key: "zones", label: "Batas area RT" },
     { key: "links", label: "Baterai ke rumah" },
     { key: "houses", label: "Rumah dan PV" },
     { key: "batteries", label: "Baterai" },
@@ -473,9 +475,9 @@ export function MapView() {
           <button key={k} type="button" aria-pressed={statusFilter === k} className={chip(statusFilter === k)} onClick={() => setStatusFilter(k)}>{label}</button>
         ))}
         <span className="mx-1 hidden h-4 w-px bg-line sm:block" aria-hidden />
-        <label className="sr-only" htmlFor="zone-focus">Fokus zona</label>
+        <label className="sr-only" htmlFor="zone-focus">Fokus area RT</label>
         <select id="zone-focus" value={focusZone ?? ""} onChange={(e) => setFocusZone(e.target.value || null)} className="rounded-lg bg-transparent px-1.5 py-1 text-xs font-medium text-ink outline-none">
-          <option value="">Semua zona</option>
+          <option value="">Semua RT</option>
           {q.data.zones.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </div>
@@ -519,6 +521,7 @@ export function MapView() {
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-ink-3">
                 <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-ink-3" aria-hidden />Rumah/PV</span>
                 <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[3px] bg-ink-3" aria-hidden />Baterai</span>
+                <span className="flex items-center gap-1"><span aria-hidden className="text-[11px] leading-none">⬢</span>Fasilitas umum</span>
                 <span className="flex items-center gap-1"><Radio className="h-3 w-3" aria-hidden />Gateway</span>
               </div>
             </div>
@@ -526,7 +529,7 @@ export function MapView() {
         ) : null}
       </div>
 
-      <p className={cn(glass, "absolute bottom-3 left-1/2 z-10 hidden -translate-x-1/2 px-2.5 py-1 text-[11px] text-ink-3 md:block")}>Koordinat placeholder dan data simulasi</p>
+      <p className={cn(glass, "absolute bottom-3 left-1/2 z-10 hidden -translate-x-1/2 px-2.5 py-1 text-[11px] text-ink-3 md:block")}>Posisi rumah hasil generator, bukan survei. Data simulasi.</p>
 
       <AnimatePresence>
         {selHouse ? <HouseDrawer key={selHouse.id} house={selHouse} live={pvById.get(selHouse.id)} onClose={() => setSelected(null)} /> : null}

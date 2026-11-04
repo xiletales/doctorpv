@@ -24,6 +24,7 @@ import { NAV } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/stores/live";
 import { useUi } from "@/stores/ui";
+import { areaLabel } from "@/lib/site";
 
 function assetHref(assetType: string, assetId: string): string {
   if (assetType === "pv") return `/solar/${assetId}`;
@@ -179,7 +180,7 @@ function ZoneStrip() {
           >
             <span className={cn("absolute inset-y-0 left-0 w-1", accent[g.status])} aria-hidden />
             <span className="flex items-center justify-between gap-2">
-              <span className="display text-sm font-semibold text-ink">{g.id.replace("Z", "Zona ")}</span>
+              <span className="display text-sm font-semibold text-ink">{areaLabel(g.id)}</span>
               <StatusBadge status={g.status} />
             </span>
             <span className="mt-2 grid grid-cols-3 gap-1 text-xs text-ink-3">
@@ -329,7 +330,7 @@ function LatestAlerts({ alerts }: { alerts: AlertDto[] }) {
         <li key={a.id} className="flex items-start justify-between gap-3 px-5 py-2.5">
           <div className="min-w-0">
             <p className="text-sm text-ink">{a.message}</p>
-            <p className="text-xs text-ink-3">{dateTime(a.createdAt)}, {a.zoneId.replace("Z", "Zona ")}</p>
+            <p className="text-xs text-ink-3">{dateTime(a.createdAt)}, {areaLabel(a.zoneId)}</p>
           </div>
           <PriorityBadge priority={a.priority} />
         </li>
@@ -420,12 +421,12 @@ export function DashboardView() {
       <h1 className="sr-only">Dasbor energi klaster</h1>
       <Hero timeline={timelineQuery.data} index={timeIndex} setIndex={setTimeIndex} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="display text-[15px] font-semibold text-ink">Zona gateway</h2>
+        <h2 className="display text-[15px] font-semibold text-ink">Area RT dan gateway</h2>
         {zoneId ? (
           <Button size="sm" variant="ghost" onClick={() => setZone(null)}>
             <X className="h-3 w-3" aria-hidden /> Tampilkan seluruh klaster
           </Button>
-        ) : <span className="text-xs text-ink-3">Pilih zona untuk memfilter grafik dan daftar</span>}
+        ) : <span className="text-xs text-ink-3">Pilih area untuk memfilter grafik dan daftar</span>}
       </div>
       <ZoneStrip />
 

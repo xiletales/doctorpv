@@ -15,11 +15,11 @@ Prototipe mengirim lewat HTTP. Isi pesannya sama, sehingga broker seperti Mosqui
 
 ## Cakupan gateway
 
-| Gateway | Zona | Rumah | Baterai |
+| Gateway | Area (simulasi) | Titik PV | Baterai |
 |---|---|---|---|
-| GW-1 | A | H01–H10 | B01–B05 |
-| GW-2 | B | H11–H20 | B06–B10 |
-| GW-3 | C | H21–H30 | B11–B15 |
+| GW-1 | RT 01 | H01–H10 | B01–B05 |
+| GW-2 | RT 02 | H11–H20 | B06–B10 |
+| GW-3 | RT 03 | H21–H30 | B11–B15 |
 
 Satu baterai melayani 2 rumah bertetangga: B01 melayani H01 dan H02, B02 melayani H03 dan H04, dan seterusnya.
 

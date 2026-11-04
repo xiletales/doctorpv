@@ -3,6 +3,7 @@ import { requireUser, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import type { MapData } from "@/lib/map-dto";
 import { canSeeOwnerName } from "@/lib/rbac";
+import { SITE } from "@/lib/site";
 
 /** Registry geometry for the map. Live status is merged on the client from the SSE snapshot. */
 export const GET = route(async () => {
@@ -16,9 +17,9 @@ export const GET = route(async () => {
   ]);
   const data: MapData = {
     center: {
-      lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? -6.2),
-      lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? 106.8166),
-      zoom: Number(process.env.NEXT_PUBLIC_MAP_ZOOM ?? 18),
+      lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? SITE.center.lat),
+      lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? SITE.center.lng),
+      zoom: Number(process.env.NEXT_PUBLIC_MAP_ZOOM ?? SITE.zoom),
     },
     boundary: cluster ? (JSON.parse(cluster.boundaryGeoJson) as [number, number][]) : [],
     zones: zones.map((g) => {

@@ -6,6 +6,7 @@ import { clockTime, num } from "@/lib/format";
 import { live } from "@/lib/live/store";
 import { dayStart, DAY, simNow, wibDay } from "@/lib/sim/time";
 import { ZONE_IDS } from "@/lib/sim/world";
+import { areaLabel } from "@/lib/site";
 
 const STEP_H = 300 / 3600;
 
@@ -25,7 +26,7 @@ function recommend(perZone: Map<string, Row[]>): string[] {
   const surplus: { weight: number; text: string }[] = [];
   const imports: { weight: number; text: string }[] = [];
   for (const [id, rows] of perZone) {
-    const name = id.replace("Z", "Zona ");
+    const name = areaLabel(id);
     const firstCurtail = rows.find((r) => r.curtailW > 200);
     const t = totals(rows);
     if (firstCurtail && t.curtail > 1) {

@@ -16,11 +16,12 @@ import type { AssetStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/stores/live";
 import { useUi } from "@/stores/ui";
+import { areaLabel } from "@/lib/site";
 
 const col = createColumnHelper<BatteryLive>();
 const columns = [
   col.accessor("id", { header: "ID", cell: (c) => <span className="num font-medium">{c.getValue()}</span> }),
-  col.accessor("zoneId", { header: "Zone", cell: (c) => c.getValue().replace("Z", "Zona ") }),
+  col.accessor("zoneId", { header: "Zone", cell: (c) => areaLabel(c.getValue()) }),
   col.accessor("soc", { header: "SoC", cell: (c) => <span className="num">{num(c.getValue(), 1)}%</span> }),
   col.accessor("soh", { header: "SoH", cell: (c) => <span className="num">{num(c.getValue(), 1)}%</span> }),
   col.accessor("voltage", { header: "Tegangan", cell: (c) => <span className="num">{num(c.getValue(), 1)} V</span> }),

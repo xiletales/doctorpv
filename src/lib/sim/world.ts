@@ -1,3 +1,4 @@
+import { COVERAGE, FACILITIES, SITE, type FacilityKind } from "../site";
 import { seeded } from "./rng";
 
 export interface LatLng {
@@ -11,6 +12,8 @@ export interface HouseDef extends LatLng {
   zoneId: string;
   gatewayId: string;
   batteryId: string;
+  /** A home, or one of the public buildings counted among the 30 points. */
+  kind: "rumah" | FacilityKind;
   ownerCode: string;
   ownerName: string;
   address: string;
@@ -117,7 +120,7 @@ export function buildWorld(center: LatLng): World {
     const label = geo(-hx - 16, y);
     world.zones.push({
       id: zoneId,
-      name: `Zona ${zoneId.slice(1)}`,
+      name: COVERAGE[zoneId].label,
       code: `ZONE-${zoneId.slice(1)}`,
       boundary: [pair(-hx, y - half), pair(hx, y - half), pair(hx, y + half), pair(-hx, y + half), pair(-hx, y - half)],
       road: [pair(-hx, y), pair(hx, y)],
@@ -136,18 +139,22 @@ export function buildWorld(center: LatLng): World {
         memberIds.push(id);
         const hxPos = x + (rand() - 0.5) * 3;
         const off = side * (15 + (rand() - 0.5) * 3);
+        const ownerName = `${FIRST[Math.floor(rand() * FIRST.length)]} ${LAST[Math.floor(rand() * LAST.length)]}`;
         const pos = geo(hxPos, y + off);
         const pv = geo(hxPos + 1.8, y + off + side * 2.2);
-        const cap = CAPACITIES[Math.floor(rand() * CAPACITIES.length)];
+        const facility = FACILITIES[id];
+        const drawn = CAPACITIES[Math.floor(rand() * CAPACITIES.length)];
+        const cap = facility ? 3.3 : drawn;
         world.houses.push({
           id,
           index: houseIdx,
           zoneId,
           gatewayId,
           batteryId,
+          kind: facility?.kind ?? "rumah",
           ownerCode: `PLG-${houseIdx * 37 + 1000}`,
-          ownerName: `${FIRST[Math.floor(rand() * FIRST.length)]} ${LAST[Math.floor(rand() * LAST.length)]}`,
-          address: `Blok ${zoneId.slice(1)} No. ${houseIdx - z * 10}`,
+          ownerName: facility ? "Fasilitas umum RW 1" : ownerName,
+          address: facility ? `${facility.name}, ${COVERAGE[zoneId].label}` : `${COVERAGE[zoneId].label} No. ${houseIdx - z * 10}`,
           lat: pos.lat,
           lng: pos.lng,
           pvLat: pv.lat,
@@ -192,7 +199,7 @@ export function buildWorld(center: LatLng): World {
 
 export function envCenter(): LatLng {
   return {
-    lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? -6.2),
-    lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? 106.8166),
+    lat: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LAT ?? SITE.center.lat),
+    lng: Number(process.env.NEXT_PUBLIC_MAP_CENTER_LNG ?? SITE.center.lng),
   };
 }

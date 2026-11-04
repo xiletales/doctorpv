@@ -11,7 +11,7 @@ export const STATUS_COLOR: Record<AssetStatus, string> = {
 
 const SIZE = 56;
 
-function draw(kind: "house" | "battery" | "gateway", status: AssetStatus): ImageData | null {
+function draw(kind: "house" | "facility" | "battery" | "gateway", status: AssetStatus): ImageData | null {
   const canvas = document.createElement("canvas");
   canvas.width = SIZE;
   canvas.height = SIZE;
@@ -36,6 +36,22 @@ function draw(kind: "house" | "battery" | "gateway", status: AssetStatus): Image
     c.lineTo(38, 40);
     c.lineTo(18, 40);
     c.lineTo(18, 28);
+    c.closePath();
+    c.fill();
+  } else if (kind === "facility") {
+    // Hexagon with a dome glyph: public buildings stand apart from homes.
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3;
+      c.lineTo(28 + 25 * Math.cos(a), 28 + 25 * Math.sin(a));
+    }
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.fillStyle = "#ffffff";
+    c.beginPath();
+    c.arc(28, 27, 10, Math.PI, 0);
+    c.lineTo(38, 40);
+    c.lineTo(18, 40);
     c.closePath();
     c.fill();
   } else if (kind === "battery") {
@@ -72,14 +88,14 @@ function draw(kind: "house" | "battery" | "gateway", status: AssetStatus): Image
 
 /** Adds any marker icon the current style is missing. Styles lose their images when the basemap changes. */
 export function ensureIcon(map: MapLibreMap, id: string) {
-  const [kind, status] = id.split("-") as ["house" | "battery" | "gateway", AssetStatus];
+  const [kind, status] = id.split("-") as ["house" | "facility" | "battery" | "gateway", AssetStatus];
   if (!STATUS_COLOR[status] || map.hasImage(id)) return;
   const image = draw(kind, status);
   if (image) map.addImage(id, image, { pixelRatio: 2 });
 }
 
 export function ensureAllIcons(map: MapLibreMap) {
-  for (const kind of ["house", "battery", "gateway"]) {
+  for (const kind of ["house", "facility", "battery", "gateway"]) {
     for (const status of Object.keys(STATUS_COLOR)) ensureIcon(map, `${kind}-${status}`);
   }
 }

@@ -10,6 +10,7 @@ import { evaluateBattery, evaluatePv, type AlertType, type Condition } from "../
 import { Engine, type WorldSample } from "../src/lib/sim/engine";
 import { activeFaults, defaultFaults, indexFaults } from "../src/lib/sim/faults";
 import { dayStart, DAY, defaultClock, simNow, wibDay } from "../src/lib/sim/time";
+import { SITE } from "../src/lib/site";
 import { buildWorld, envCenter } from "../src/lib/sim/world";
 import type { Prisma } from "../src/generated/prisma/client";
 import { createPrisma } from "../src/lib/prisma-factory";
@@ -161,11 +162,11 @@ function seedStatic() {
   for (const g of world.zones) {
     rows.zone.push({ id: g.id, name: g.name, code: g.code, boundaryGeoJson: JSON.stringify(g.boundary), roadGeoJson: JSON.stringify({ road: g.road, label: [g.labelLng, g.labelLat] }) });
   }
-  cluster = { id: "KLASTER-1", name: "Klaster Permukiman", boundaryGeoJson: JSON.stringify(world.boundary) };
+  cluster = { id: "KLASTER-1", name: SITE.name, boundaryGeoJson: JSON.stringify(world.boundary) };
   const owner = world.houses[0];
   const user = (id: string, name: string, email: string, role: string, houseId: string | null) => rows.user.push({ id, name, email, passwordHash: hash, role, active: true, createdAt: realNow, houseId });
   user("U-DLH", "Ratna Wibowo", "dlh@sunpulse.id", "dlh", null);
-  user("U-ADM", "Agus Santoso", "admin@sunpulse.id", "admin", null);
+  user("U-PGR", "Agus Santoso", "pengurus@sunpulse.id", "pengurus", null);
   user("U-T1", "Budi Hartono", "teknisi1@sunpulse.id", "teknisi", null);
   user("U-W1", owner.ownerName, "warga.h01@sunpulse.id", "warga", owner.id);
 

@@ -8,7 +8,7 @@
 
 | Menit | Halaman | Lakukan | Sampaikan |
 |---|---|---|---|
-| 0:00 | Landing | Tunjukkan ilustrasi klaster, lalu masuk | "Satu klaster permukiman: 30 rumah, 15 baterai bersama, 3 gateway." |
+| 0:00 | Landing | Tunjukkan ilustrasi klaster, lalu masuk | "Kampung Iklim RW 1 Panularan: 30 titik PV, 15 baterai bersama, 3 gateway." |
 | 0:20 | Dasbor | Tunjukkan Pulse Score dan aliran energi | "Satu angka untuk kesehatan seluruh klaster. Saat ini 4 aset perlu perhatian." |
 | 0:50 | Dasbor | Geser **Jelajah waktu** ke pukul 19.00, lalu kembali ke langsung | "Lewat waktu sekarang, sistem menampilkan prakiraan model: baterai menggantikan surya pada malam hari." |
 | 1:20 | Peta | Tunjukkan rumah, baterai, gateway, dan garis pasangan | "Satu baterai melayani dua rumah bertetangga, tercatat eksplisit." |
@@ -17,7 +17,7 @@
 | 2:15 | Diagnosis AI | Pilih H21 | "Bukan sekadar alarm: ada kemungkinan penyebab, buktinya, dan tindakan. Ini estimasi, teknisi tetap memverifikasi." |
 | 3:00 | Pusat Notifikasi | **Buat perintah kerja** untuk H21 | "Alert langsung menjadi pekerjaan." |
 | 3:20 | Pemeliharaan | **Mulai kerjakan**, lalu **Tandai selesai** | "Setelah diperbaiki, sistem membandingkan kinerja sebelum dan sesudah." |
-| 3:50 | Shift+D, lalu Peta | **Putuskan GW-3**, tunggu marker abu-abu di Zona C, lalu **Sambungkan dan sinkronkan** | "Internet putus di satu zona, zona lain tetap berjalan, dan data tidak hilang." |
+| 3:50 | Shift+D, lalu Peta | **Putuskan GW-3**, tunggu marker abu-abu di RT 03, lalu **Sambungkan dan sinkronkan** | "Internet putus di satu zona, zona lain tetap berjalan, dan data tidak hilang." |
 | 4:30 | Baterai B12 | Klik **Percepat degradasi 30 hari** di Shift+D | "SoH menembus 80% dan sistem meminta uji kapasitas." |
 | 4:50 | Shift+D | **Kembalikan ke kondisi awal** | Tutup dengan alur: Pantau, Analisis, Tindak lanjuti, Evaluasi. |
 

@@ -126,7 +126,7 @@ export class Engine {
         const s = this.pvSample(h, ts, g, ambient);
         pv.push(s);
         pair.pv += s.trueW;
-        pair.load += loadW(h.index, h.loadScale, ts);
+        pair.load += loadW(h.index, h.loadScale, ts, h.kind);
       }
       const soc = this.soc.get(battery.id) ?? 55;
       const maxP = battery.capacityKwh * 1000 * C_RATE;

@@ -10,6 +10,7 @@ import { evaluateBattery, evaluatePv, type AlertType, type Condition } from "../
 import { telemetryMessage, type ScenarioName, type SimDirective, type TelemetryMessage } from "../contracts/telemetry";
 import { dayStart, DAY, defaultClock, simNow, wibDay, type ClockConfig } from "../sim/time";
 import type { AlertPriority, AssetStatus } from "../types";
+import { areaLabel } from "@/lib/site";
 
 export interface PvLive {
   id: string;
@@ -572,7 +573,7 @@ class LiveStore {
         await this.raise(gw.id, "gateway", gw.zoneId, {
           type: "gateway_offline",
           priority: "high",
-          message: `${gw.id} terputus. Data ${gw.zoneId.replace("Z", "Zona ")} ditampung di buffer lokal.`,
+          message: `${gw.id} terputus. Data ${areaLabel(gw.zoneId)} ditampung di buffer lokal.`,
           recommendedAction: "Periksa koneksi internet gateway. Data akan tersinkron otomatis saat tersambung.",
         });
       }

@@ -1,11 +1,11 @@
-export type Role = "dlh" | "admin" | "teknisi" | "warga";
+export type Role = "dlh" | "pengurus" | "teknisi" | "warga";
 export type AssetStatus = "normal" | "warning" | "critical" | "offline" | "maintenance";
 export type AlertPriority = "critical" | "high" | "medium" | "low";
 export type AlertStatus = "open" | "acknowledged" | "in_progress" | "resolved";
 
 export const ROLE_LABEL: Record<Role, string> = {
   dlh: "Super Admin DLH",
-  admin: "Admin Klaster",
+  pengurus: "Pengurus RW 1",
   teknisi: "Teknisi",
   warga: "Warga",
 };

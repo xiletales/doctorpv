@@ -7,11 +7,12 @@ import { LogoMark } from "@/components/domain/logo";
 import { PulseLine } from "@/components/domain/pulse-score";
 import { ClusterIsometric } from "@/components/illustrations/cluster-isometric";
 import { Button } from "@/components/ui/button";
+import { PROJECT_TITLE, SITE } from "@/lib/site";
 import { ROLE_LABEL, type AssetStatus, type Role } from "@/lib/types";
 
 const DEMO: { email: string; role: Role; scope: string }[] = [
   { email: "dlh@sunpulse.id", role: "dlh", scope: "Seluruh data dan kontrol demo" },
-  { email: "admin@sunpulse.id", role: "admin", scope: "Pengelolaan klaster dan kontrol demo" },
+  { email: "pengurus@sunpulse.id", role: "pengurus", scope: "Pengelolaan RW 1 dan kontrol demo" },
   { email: "teknisi1@sunpulse.id", role: "teknisi", scope: "Diagnosis dan pekerjaan, tanpa nama pemilik" },
   { email: "warga.h01@sunpulse.id", role: "warga", scope: "Hanya rumah H01 dan baterainya" },
 ];
@@ -61,12 +62,15 @@ export function LoginView({ demo }: { demo: boolean }) {
         <main className="flex min-w-0 flex-col justify-between gap-6">
           <header className="flex items-center gap-3">
             <LogoMark className="h-10 w-10" />
-            <p className="display text-xl font-bold tracking-wide">SUNPULSE</p>
+            <div>
+              <p className="display text-xl font-bold tracking-wide">SUNPULSE</p>
+              <p className="text-xs text-slate-400">{SITE.name}, {SITE.area}</p>
+            </div>
           </header>
           <div>
             <h1 className="display max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl xl:text-6xl">Denyut energi klaster permukiman Anda.</h1>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-              Sistem manajemen energi hibrida PLTS, baterai, dan PLN berbasis AIoT, dengan deteksi dan diagnosis gangguan, pemeliharaan prediktif, dan manajemen kesehatan baterai.
+              {PROJECT_TITLE}
             </p>
             <PulseLine bpm={72} color="#FBBF24" className="mt-4 h-8 w-64" />
           </div>

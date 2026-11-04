@@ -1,10 +1,11 @@
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { DisclaimerNote, PageTitle } from "@/components/domain/status";
 import { Card } from "@/components/ui/card";
+import { PROJECT_TITLE } from "@/lib/site";
 
 const PIPELINE = [
   { title: "Sensor dan BMS", body: "PV, baterai, dan meter energi di tiap rumah" },
-  { title: "Gateway", body: "Satu per zona, menampung data saat internet putus" },
+  { title: "Gateway", body: "Satu per area RT, menampung data saat internet putus" },
   { title: "Ingest", body: "Kunci per gateway, validasi skema, dan buang duplikat" },
   { title: "Mesin analisis", body: "Alert, deteksi anomali, diagnosis, dan skor kesehatan" },
   { title: "Dasbor", body: "Pembaruan langsung lewat SSE, dibatasi menurut peran" },
@@ -21,7 +22,8 @@ const LOOP = [
 export default function AboutPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <PageTitle title="Arsitektur sistem" description="SUNPULSE mengelola energi hibrida PLTS, baterai, dan PLN pada satu klaster permukiman: 30 rumah dengan PV atap, 15 baterai bersama, dan 3 gateway IoT." />
+      <p className="text-sm font-medium text-ink-2">{PROJECT_TITLE}</p>
+      <PageTitle title="Arsitektur sistem" description="Dokter jaga AI-IoT untuk PLTS Kampung Iklim. Mitra: DLH Kota Surakarta. Satu klaster dengan 30 titik PV, 15 baterai bersama, dan 3 gateway IoT." />
 
       <section aria-labelledby="flow-title">
         <h2 id="flow-title" className="text-sm font-semibold text-ink">Perjalanan data</h2>
@@ -72,7 +74,7 @@ export default function AboutPage() {
           <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-ink-2">
             <li>Seluruh data berasal dari simulator fisika, belum dari lapangan.</li>
             <li>Mesin AI memakai statistik dan aturan, dan akurasi lapangannya belum diukur.</li>
-            <li>Koordinat adalah placeholder.</li>
+            <li>Lokasi mendekati Panularan, tetapi posisi rumah dan pembagian RT hasil generator, bukan survei.</li>
             <li>Tarif, faktor emisi, dan tidak adanya kredit ekspor adalah asumsi.</li>
           </ul>
         </Card>

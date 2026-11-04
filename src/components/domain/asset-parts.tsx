@@ -9,6 +9,7 @@ import { HealthScoreRing } from "@/components/domain/health-ring";
 import { Card, CardHeader } from "@/components/ui/card";
 import type { HealthScore } from "@/lib/ai/health";
 import { apiGet } from "@/lib/client";
+import { COVERAGE } from "@/lib/site";
 import type { AlertDto } from "@/lib/alerts/dto";
 import { dateTime, num } from "@/lib/format";
 import type { RingPoint } from "@/lib/live/store";
@@ -24,10 +25,10 @@ export function ZoneFilter() {
   const setZone = useUi((s) => s.setZone);
   return (
     <>
-      <label htmlFor="zone-filter" className="sr-only">Filter zona</label>
+      <label htmlFor="zone-filter" className="sr-only">Filter area RT</label>
       <select id="zone-filter" value={zoneId ?? ""} onChange={(e) => setZone(e.target.value || null)} className={selectClass}>
-        <option value="">Semua zona</option>
-        {["A", "B", "C"].map((n) => <option key={n} value={`Z${n}`}>Zona {n}</option>)}
+        <option value="">Semua RT</option>
+        {Object.entries(COVERAGE).map(([id, c]) => <option key={id} value={id}>{c.label}</option>)}
       </select>
     </>
   );

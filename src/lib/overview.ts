@@ -4,6 +4,7 @@ import { live } from "./live/store";
 import { ambientC, clearSky } from "./sim/physics";
 import { dayStart, DAY, simNow, wibDay } from "./sim/time";
 import { ZONE_IDS } from "./sim/world";
+import { areaLabel } from "@/lib/site";
 
 export interface CurvePoint {
   ts: number;
@@ -125,7 +126,7 @@ export async function buildOverview(zoneParam: string | null): Promise<OverviewD
   const avoidedGrid = Math.max(0, loadKwh - plnKwh);
 
   return {
-    scopeLabel: zone ? zone.replace("Z", "Zona ") : "Seluruh klaster",
+    scopeLabel: zone ? areaLabel(zone) : "Seluruh klaster",
     simTs: now,
     dayStart: today,
     kpi: {

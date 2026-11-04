@@ -59,7 +59,7 @@ export function DemoPanel({ onNavigate }: { onNavigate?: () => void }) {
           {d?.gw3Offline ? <Plug className="mt-0.5 h-5 w-5 shrink-0 text-st-offline" aria-hidden /> : <PlugZap className="mt-0.5 h-5 w-5 shrink-0 text-ink-3" aria-hidden />}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink">Gateway GW-3 terputus</p>
-            <p className="mt-0.5 text-xs text-ink-2">Aset Zona C menjadi Offline, sedangkan zona lain tetap langsung. Data ditampung di buffer. Saat tersambung kembali, buffer tersinkron sekaligus.</p>
+            <p className="mt-0.5 text-xs text-ink-2">Aset RT 03 menjadi Offline, sedangkan RT lain tetap langsung. Data ditampung di buffer. Saat tersambung kembali, buffer tersinkron sekaligus.</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               {d?.gw3Offline ? (
                 <Button size="sm" variant="primary" disabled={disabled} onClick={() => run.mutate("gateway_gw3_reconnect")}>Sambungkan dan sinkronkan</Button>
