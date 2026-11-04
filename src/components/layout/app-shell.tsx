@@ -13,9 +13,11 @@ import { ROLE_LABEL, type SessionUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useUi } from "@/stores/ui";
 import { SessionContext } from "./session-context";
-import { TopbarLive } from "./topbar-live";
+import { StaleBanner, TopbarLive } from "./topbar-live";
 import { CommandPalette } from "./command-palette";
 import { LiveProvider } from "./live-provider";
+import { DemoSheet } from "@/components/demo/demo-sheet";
+import { can } from "@/lib/rbac";
 
 const ICONS: Record<string, LucideIcon> = {
   gauge: Gauge, map: Map, home: Home, battery: Battery, zap: Zap, brain: BrainCircuit, wrench: Wrench,
@@ -194,11 +196,13 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
               );
             })}
           </nav>
+          <StaleBanner />
           <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>
       <CommandPalette items={items} />
       <LiveProvider />
+      {can(user.role, "demo:control") ? <DemoSheet /> : null}
     </SessionContext.Provider>
   );
 }

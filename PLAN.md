@@ -1,6 +1,6 @@
 # DOCTOR PV — Build Plan
 
-Status: **awaiting confirmation. No application code has been written.**
+Status: **confirmed, with scope reduced for the 7 November 2026 pitch.** Indonesian only. PDF/Excel, user and settings CRUD, PWA, English, Postgres, the LLM assistant and the full kanban are cut. Some sizing below changed during the build, such as batteries now being 10.24 kWh. See README.md for the current state.
 Checked on 2026-11-04 against the npm registry and this machine.
 
 ---

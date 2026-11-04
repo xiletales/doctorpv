@@ -50,6 +50,9 @@ export const NAV: NavItem[] = [
   { href: "/map", label: "Peta Geospasial", group: "Pemantauan", icon: "map", roles: ALL },
   { href: "/solar", label: "Rumah dan Surya", group: "Pemantauan", icon: "home", roles: ALL },
   { href: "/batteries", label: "Kesehatan Baterai", group: "Pemantauan", icon: "battery", roles: ALL },
+  { href: "/ai", label: "Diagnosis AI", group: "Kecerdasan", icon: "brain", roles: ALL },
+  { href: "/alerts", label: "Pusat Alert", group: "Operasional", icon: "siren", roles: ALL },
+  { href: "/demo", label: "Kontrol Demo", group: "Sistem", icon: "sliders", roles: ["dlh", "admin_rt"] },
 ];
 
 export function navFor(role: Role): NavItem[] {

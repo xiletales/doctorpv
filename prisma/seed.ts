@@ -213,7 +213,11 @@ for (const h of world.houses) {
       { capacityKwp: h.capacityKwp, baselinePr: baselines.get(h.id) ?? h.pr, rows: pvRows.get(h.id) ?? [], weather, peersByDay: peers },
       Math.min(anomaly.to + 10 * 3600, nowTs),
     );
-    found.push({ assetType: "pv", assetId: h.id, gangId: h.gangId, anomaly, diagnosis: runPvDiagnosis(f) });
+    const diagnosis = runPvDiagnosis(f);
+    const top = diagnosis.causes[0].key;
+    // A suspected sensor is reported as needing verification, never as a failed PV system.
+    const shaped: Anomaly = top === "sensor" ? { ...anomaly, pattern: "sensor", severity: "medium" } : top === "inverter" ? { ...anomaly, pattern: "sudden_zero" } : anomaly;
+    found.push({ assetType: "pv", assetId: h.id, gangId: h.gangId, anomaly: shaped, diagnosis });
   }
 }
 for (const b of world.batteries) {
@@ -299,7 +303,12 @@ const seedAlerts = db.transaction(() => {
     const id = `SEED-${String(n).padStart(3, "0")}`;
     const [assetId] = key.split(":");
     openIds.set(key, id);
-    insAlert.run(id, a.assetType, assetId, a.gangId, a.condition.type, a.condition.priority, a.condition.message, a.condition.recommendedAction, "open", a.from, null, null, null);
+    // An alert opens during the working day when analysis first catches the fault, not when the fault physically began.
+    const detected = found.find((f) => f.assetId === assetId && f.anomaly.to >= today - DAY);
+    const sudden = a.condition.type === "inverter_trip" || a.condition.type === "device_offline";
+    const raisedAt = sudden ? a.from : (detected?.anomaly.from ?? today - 3 * DAY) + (8.4 + n * 0.35) * 3600;
+    a.from = raisedAt;
+    insAlert.run(id, a.assetType, assetId, a.gangId, a.condition.type, a.condition.priority, a.condition.message, a.condition.recommendedAction, "open", raisedAt, null, null, null);
   }
 
   let pn = 0;
@@ -320,7 +329,8 @@ const seedAlerts = db.transaction(() => {
       const closed = f.anomaly.to + DAY;
       insAlert.run(alertId, f.assetType, f.assetId, f.gangId, type, priority, `${anomalyTitle(f.anomaly.pattern)} pada ${f.assetId}.`, f.diagnosis?.causes[0]?.action ?? "Periksa aset.", "resolved", f.anomaly.from + 8 * 3600, "Budi Hartono", f.anomaly.from + 8 * 3600 + 1800 + (pn % 5) * 900, Math.min(closed, nowTs - 3600));
     }
-    const payload: AnomalyPayload = { ...f.anomaly, title: anomalyTitle(f.anomaly.pattern), open: Boolean(ongoing && matchKey), diagnosis: f.diagnosis };
+    const openPriority = ongoing && matchKey ? open.get(matchKey)?.condition.priority : undefined;
+    const payload: AnomalyPayload = { ...f.anomaly, severity: openPriority ?? f.anomaly.severity, title: anomalyTitle(f.anomaly.pattern), open: Boolean(ongoing && matchKey), diagnosis: f.diagnosis };
     insPred.run(`ANM-${String(pn).padStart(3, "0")}`, f.assetType, f.assetId, f.gangId, "anomaly", JSON.stringify(payload), f.diagnosis?.confidence ?? 0.5, MODEL_VERSION, alertId, f.anomaly.from);
   }
 

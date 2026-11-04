@@ -383,7 +383,7 @@ export function DashboardView() {
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Card className="xl:col-span-2">
-          <CardHeader title="Alert terbaru" />
+          <CardHeader title="Alert terbaru" action={<Link href="/alerts" className="text-xs font-medium text-primary hover:underline">Buka pusat alert</Link>} />
           <div className="mt-1 pb-1">{alerts.data ? <LatestAlerts alerts={alerts.data.alerts} /> : <Skeleton className="mx-5 h-48" />}</div>
         </Card>
         <Card>

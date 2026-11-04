@@ -3,11 +3,8 @@ import { Bell, Clock, Lock } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { clockTime } from "@/lib/format";
-import { NAV } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { useLive } from "@/stores/live";
-
-const HAS_ALERTS = NAV.some((n) => n.href === "/alerts");
 
 export function TopbarLive() {
   const snapshot = useLive((s) => s.snapshot);
@@ -39,7 +36,7 @@ export function TopbarLive() {
         <span className={cn("h-2 w-2 rounded-full", live ? "live-dot bg-st-normal" : "bg-st-offline")} aria-hidden />
         {live ? <span>Langsung, {age} dtk lalu</span> : <span>{snapshot && connected ? "Simulator tidak berjalan" : "Menyambungkan"}</span>}
       </div>
-      <Link href={HAS_ALERTS ? "/alerts" : "/dashboard"} prefetch={HAS_ALERTS} className="relative flex h-9 w-9 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2" aria-label={`Alert terbuka: ${snapshot?.openAlerts ?? 0}`}>
+      <Link href="/alerts" className="relative flex h-9 w-9 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2" aria-label={`Alert terbuka: ${snapshot?.openAlerts ?? 0}`}>
         <Bell className="h-4 w-4" aria-hidden />
         {snapshot && snapshot.openAlerts > 0 ? (
           <span className="num absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-st-critical px-1 text-[10px] font-semibold text-white dark:text-[#2a0a0a]">
@@ -48,5 +45,15 @@ export function TopbarLive() {
         ) : null}
       </Link>
     </>
+  );
+}
+
+export function StaleBanner() {
+  const stale = useLive((s) => s.snapshot?.seedStale);
+  if (!stale) return null;
+  return (
+    <p role="alert" className="bg-st-warning-soft px-4 py-1.5 text-center text-xs text-ink">
+      Data simulasi berasal dari hari lain, sehingga grafik hari ini kosong. Hentikan aplikasi lalu jalankan npm run demo untuk menyusunnya ulang.
+    </p>
   );
 }

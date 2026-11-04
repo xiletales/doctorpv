@@ -75,6 +75,8 @@ export interface LiveSnapshot {
   simTs: number;
   clock: ClockConfig;
   simulatorConnected: boolean;
+  /** True when the seeded data belongs to another day, so that "today" has no history. */
+  seedStale: boolean;
   pv: PvLive[];
   batteries: BatteryLive[];
   gangs: GangLive[];
@@ -146,6 +148,9 @@ class LiveStore {
   private alertSeq = 0;
   private ready: Promise<void> | null = null;
   private lastAnyMessage = 0;
+  private seedDay = 0;
+  /** Alerts a person closed while the condition still holds. They stay closed until it clears. */
+  private suppressed = new Set<string>();
   private offlineSince = new Map<string, number>();
   quality = { accepted: 0, rejected: 0, duplicates: 0, buffered: 0 };
   quarantine: { at: number; reason: string }[] = [];
@@ -172,6 +177,8 @@ class LiveStore {
       prisma.solarTelemetry.groupBy({ by: ["assetId"], where: { res: 5, ts: { gte: today, lte: now } }, _sum: { energyWh: true } }),
       prisma.energyMeterReading.groupBy({ by: ["scopeId"], where: { res: 5, ts: { gte: today, lte: now } }, _sum: { pvW: true } }),
     ]);
+    const seedSetting = await prisma.setting.findUnique({ where: { key: "seedDay" } });
+    this.seedDay = Number(seedSetting?.valueJson ?? 0);
     const sNow = new Map(solarNow.map((r) => [r.assetId, r]));
     const bNow = new Map(battNow.map((r) => [r.assetId, r]));
     const mNow = new Map(meterNow.map((r) => [r.scopeId, r]));
@@ -363,6 +370,7 @@ class LiveStore {
     for (const c of conds) {
       const key = `${assetId}:${c.type}`;
       this.clears.delete(key);
+      if (this.suppressed.has(key)) continue;
       const existing = this.open.get(key);
       if (existing) {
         if (existing.priority !== c.priority && rank(c.priority) > rank(existing.priority)) {
@@ -381,6 +389,7 @@ class LiveStore {
       if (active.has(t)) continue;
       const key = `${assetId}:${t}`;
       this.hits.delete(key);
+      this.suppressed.delete(key);
       if (!this.open.has(key)) continue;
       const n = (this.clears.get(key) ?? 0) + 1;
       this.clears.set(key, n);
@@ -652,6 +661,7 @@ class LiveStore {
       simTs: simNow(this.clock),
       clock: this.clock,
       simulatorConnected: this.lastAnyMessage > 0 && realNow() - this.lastAnyMessage <= OFFLINE_AFTER,
+      seedStale: this.seedDay !== wibDay(simNow(this.clock)),
       pv: [...this.pv.values()].filter((p) => allow(p.gangId)),
       batteries: [...this.batteries.values()].filter((b) => allow(b.gangId)),
       gangs: [...this.gangs.values()].filter((g) => allow(g.id)),
@@ -681,6 +691,37 @@ class LiveStore {
       const scope = gangScope(s.user);
       if (scope === null || scope.includes(gangId)) s.send("alert", event);
     }
+  }
+
+  /** Applies a person's status change. Closing keeps the alert closed until its condition clears. */
+  setAlertStatus(id: string, status: "acknowledged" | "in_progress" | "resolved", userName: string) {
+    return this.enqueue(async () => {
+      await this.init();
+      const at = simNow(this.clock);
+      const current = await prisma.alert.findUnique({ where: { id } });
+      if (!current) return null;
+      const updated = await prisma.alert.update({
+        where: { id },
+        data: {
+          status,
+          acknowledgedBy: current.acknowledgedBy ?? userName,
+          acknowledgedAt: current.acknowledgedAt ?? at,
+          resolvedAt: status === "resolved" ? at : null,
+        },
+      });
+      await prisma.auditLog.create({
+        data: { id: `AUD-${Date.now()}-${id}`, userId: userName, action: `alert:${status}`, entity: "Alert", entityId: id, detail: `${current.status} ke ${status}`, createdAt: realNow() },
+      });
+      if (status === "resolved") {
+        const key = `${current.assetId}:${current.type}`;
+        this.open.delete(key);
+        this.suppressed.add(key);
+      }
+      this.recompute();
+      this.scheduleFlush();
+      this.emitAlert({ kind: "resolved", id, assetId: current.assetId, gangId: current.gangId }, current.gangId);
+      return updated;
+    });
   }
 
   setClock(clock: ClockConfig) {
@@ -717,6 +758,7 @@ class LiveStore {
     this.hits.clear();
     this.clears.clear();
     this.rings.clear();
+    this.suppressed.clear();
     for (const g of this.gateways.values()) {
       g.online = true;
       g.bufferEstimate = 0;
