@@ -181,7 +181,7 @@ export function MapView() {
   const [focusGang, setFocusGang] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selected>(null);
   const [loaded, setLoaded] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
 
   const q = useQuery({ queryKey: ["map"], queryFn: () => apiGet<MapData>("/api/v1/map/geojson"), staleTime: Infinity });
 
@@ -289,7 +289,7 @@ export function MapView() {
     if (coords.length === 0) return;
     const lngs = coords.map((c) => c[0]);
     const lats = coords.map((c) => c[1]);
-    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 90, duration: 900 });
+    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: map.getContainer().clientWidth < 640 ? 28 : 90, duration: 900 });
   }, [q.data]);
 
   useEffect(() => {
@@ -400,7 +400,7 @@ export function MapView() {
         ) : null}
 
         {loaded && layers.houses ? (
-          <Source id="houses" type="geojson" data={houses} cluster clusterMaxZoom={15} clusterRadius={46}>
+          <Source id="houses" type="geojson" data={houses} cluster clusterMaxZoom={14} clusterRadius={46}>
             <Layer id="house-clusters" type="circle" filter={clusterFilter} paint={{ "circle-color": "#047857", "circle-radius": ["step", ["get", "point_count"], 14, 10, 18, 40, 24], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" }} />
             {effective !== "schematic" ? (
               <Layer id="house-cluster-count" type="symbol" filter={clusterFilter} layout={{ "text-field": ["get", "point_count_abbreviated"], "text-size": 12, "text-font": ["Noto Sans Bold"] }} paint={{ "text-color": "#ffffff" }} />
@@ -410,7 +410,7 @@ export function MapView() {
         ) : null}
 
         {loaded && layers.batteries ? (
-          <Source id="batteries" type="geojson" data={batteries} cluster clusterMaxZoom={15} clusterRadius={46}>
+          <Source id="batteries" type="geojson" data={batteries} cluster clusterMaxZoom={14} clusterRadius={46}>
             <Layer id="battery-clusters" type="circle" filter={clusterFilter} paint={{ "circle-color": "#0369a1", "circle-radius": ["step", ["get", "point_count"], 12, 10, 16, 30, 20], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" }} />
             {effective !== "schematic" ? (
               <Layer id="battery-cluster-count" type="symbol" filter={clusterFilter} layout={{ "text-field": ["get", "point_count_abbreviated"], "text-size": 11, "text-font": ["Noto Sans Bold"] }} paint={{ "text-color": "#ffffff" }} />

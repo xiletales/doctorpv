@@ -52,7 +52,7 @@ function UserMenu({ user }: { user: SessionUser }) {
         <button
           type="button"
           className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-2"
-          aria-label={`Menu pengguna ${user.name}`}
+          aria-label={`${user.name}, ${ROLE_LABEL[user.role]}, buka menu pengguna`}
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
             {initials}
@@ -130,7 +130,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
               if (list.length === 0) return null;
               return (
                 <div key={group}>
-                  {!collapsed ? <p className="mb-1.5 px-2.5 text-[11px] font-medium text-slate-500">{group}</p> : null}
+                  {!collapsed ? <p className="mb-1.5 px-2.5 text-[11px] font-medium text-slate-400">{group}</p> : null}
                   <ul className="space-y-0.5">
                     {list.map((item) => {
                       const Icon = ICONS[item.icon] ?? Gauge;

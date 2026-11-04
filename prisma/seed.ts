@@ -330,7 +330,8 @@ const seedAlerts = db.transaction(() => {
       insAlert.run(alertId, f.assetType, f.assetId, f.gangId, type, priority, `${anomalyTitle(f.anomaly.pattern)} pada ${f.assetId}.`, f.diagnosis?.causes[0]?.action ?? "Periksa aset.", "resolved", f.anomaly.from + 8 * 3600, "Budi Hartono", f.anomaly.from + 8 * 3600 + 1800 + (pn % 5) * 900, Math.min(closed, nowTs - 3600));
     }
     const openPriority = ongoing && matchKey ? open.get(matchKey)?.condition.priority : undefined;
-    const payload: AnomalyPayload = { ...f.anomaly, severity: openPriority ?? f.anomaly.severity, title: anomalyTitle(f.anomaly.pattern), open: Boolean(ongoing && matchKey), diagnosis: f.diagnosis };
+    const openedAt = ongoing && matchKey ? open.get(matchKey)?.from : undefined;
+    const payload: AnomalyPayload = { ...f.anomaly, from: openedAt ?? f.anomaly.from, severity: openPriority ?? f.anomaly.severity, title: anomalyTitle(f.anomaly.pattern), open: Boolean(ongoing && matchKey), diagnosis: f.diagnosis };
     insPred.run(`ANM-${String(pn).padStart(3, "0")}`, f.assetType, f.assetId, f.gangId, "anomaly", JSON.stringify(payload), f.diagnosis?.confidence ?? 0.5, MODEL_VERSION, alertId, f.anomaly.from);
   }
 
