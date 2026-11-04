@@ -10,15 +10,39 @@ Satu klaster: 30 rumah dengan PV atap, 15 baterai bersama (1 baterai melayani 2 
 
 Membutuhkan Node.js 24.
 
+Data disimpan di Postgres Supabase, sehingga aplikasi **membutuhkan internet**. Login tetap memakai NextAuth.
+
 ```bash
 nvm use
 npm install
-npm run demo
+node scripts/ensure-env.mjs   # membuat .env, lalu berhenti sampai URL database diisi
 ```
 
-Buka http://localhost:3000. `npm run demo` menyiapkan `.env` dan database, menyusun ulang data bila berasal dari hari lain, lalu menjalankan aplikasi dan simulator. Tidak membutuhkan internet.
+Isi `.env`, yang tidak pernah masuk git:
 
-Untuk pengembangan: `npm run db:setup`, `npm run dev`, dan `npm run simulate` di terminal kedua.
+| Variabel | Sumber |
+|---|---|
+| `DATABASE_URL` | Connect di dashboard Supabase, Transaction pooler, port 6543 |
+| `DIRECT_URL` | Connect di dashboard Supabase, Session pooler, port 5432 |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Hanya untuk `npm run db:verify-rls` |
+
+Karakter khusus pada password harus di-percent-encode. Unduh juga sertifikat CA dari Database settings > SSL Configuration, lalu simpan sebagai `supabase-ca.crt` di root project. Tanpa file itu, koneksi ditolak, karena sertifikat server selalu diverifikasi.
+
+```bash
+npm run db:setup       # skema, RLS, dan data awal
+npm run demo           # aplikasi dan simulator
+npm run db:verify-rls  # di terminal kedua, saat aplikasi berjalan
+```
+
+Buka http://localhost:3000. `npm run demo` memperbarui skema, menyusun ulang data bila berasal dari hari lain, lalu menjalankan aplikasi dan simulator.
+
+Untuk pengembangan: `npm run dev`, dan `npm run simulate` di terminal kedua.
+
+### Keamanan database
+
+- `prisma/enable-rls.sql` mengaktifkan RLS di semua tabel setelah setiap `db push`. Tanpa policy, Data API Supabase tidak mengembalikan baris apa pun, sementara Prisma tetap punya akses sebagai pemilik tabel.
+- `npm run db:verify-rls` membuktikan REST dengan publishable key tidak mengembalikan data dan login aplikasi tetap berhasil.
+- Project free tier berhenti setelah 1 minggu tanpa aktivitas, jadi buka dashboard sebelum presentasi.
 
 ## Akun demo
 
@@ -47,7 +71,7 @@ flowchart LR
     API["REST /api/v1 dengan RBAC"]
     SSE["GET /api/v1/stream"]
   end
-  DB[("SQLite via Prisma")]
+  DB[("Postgres Supabase via Prisma")]
   UI["Dasbor dan tampilan warga"]
   GW -->|"batch JSON"| ING --> LIVE --> AI --> DB
   AI --> LIVE --> SSE --> UI

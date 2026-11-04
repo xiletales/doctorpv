@@ -1,12 +1,9 @@
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaClient } from "@/generated/prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
+import { createPrisma } from "./prisma-factory";
 
 const holder = globalThis as unknown as { __prisma?: PrismaClient };
 
-export const prisma: PrismaClient =
-  holder.__prisma ??
-  new PrismaClient({
-    adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./data/sunpulse.db" }),
-  });
+/** Runtime traffic goes through the transaction pooler (DATABASE_URL, port 6543). */
+export const prisma: PrismaClient = holder.__prisma ?? createPrisma(process.env.DATABASE_URL ?? "", 5);
 
 holder.__prisma = prisma;

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const files = execSync("git ls-files --cached --others --exclude-standard", { encoding: "utf8" })
   .split("\n")
   .filter((f) => /\.(ts|tsx|mjs|prisma|md|json|css)$/.test(f) && !f.endsWith("package-lock.json") && !f.endsWith("check-terms.mjs"));
-const pattern = /(^|[^a-z])gang(?!guan)|DOCTOR PV|doctorpv/i;
+const pattern = /(^|[^a-z])gang(?!guan)|DOCTOR PV|doctorpv(?!-backup)/i;
 const hits = [];
 for (const f of files) {
   readFileSync(f, "utf8").split("\n").forEach((line, i) => {

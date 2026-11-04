@@ -168,7 +168,11 @@ class LiveStore {
       prisma.gateway.findMany(),
       prisma.alert.findMany({ where: { status: { not: "resolved" } } }),
       prisma.aiPrediction.findMany({ where: { kind: "anomaly" }, select: { assetId: true } }),
-      prisma.solarTelemetry.findMany({ where: { res: 5, ts: { lte: bucket, gte: bucket - 2 * DAY } }, orderBy: { ts: "desc" }, distinct: ["assetId"] }),
+      // Latest row per asset, computed in the database so that 2 days of rows do not cross the network.
+      prisma.$queryRaw<{ assetId: string; dcVoltage: number; dcCurrent: number; acPowerW: number; panelTempC: number; inverter: string }[]>`
+        SELECT DISTINCT ON ("assetId") "assetId", "dcVoltage", "dcCurrent", "acPowerW", "panelTempC", inverter
+        FROM "SolarTelemetry" WHERE res = 5 AND ts <= ${bucket} AND ts >= ${bucket - 2 * DAY}
+        ORDER BY "assetId", ts DESC`,
       prisma.batteryTelemetry.findMany({ where: { res: 5, ts: bucket } }),
       prisma.energyMeterReading.findMany({ where: { res: 5, ts: bucket } }),
       prisma.weatherReading.findFirst({ where: { res: 5, ts: bucket } }),
@@ -301,7 +305,8 @@ class LiveStore {
       if (wasOffline) await this.resolve(`${gatewayId}:gateway_offline`);
       await this.evaluateGang(gw.zoneId);
     }
-    if (toPersist.length) await this.persist(toPersist);
+    // Not awaited, so that a slow network write cannot delay ticks and make gateways look offline.
+    if (toPersist.length) void this.persist(toPersist).catch((e) => console.error("[live] persist", e));
     this.recompute();
     this.scheduleFlush();
     return { accepted, rejected, duplicates, directive: this.directive };
@@ -583,22 +588,32 @@ class LiveStore {
     }
   }
 
+  /**
+   * Writes one batch per table in a single transaction. Re-sent or forecast rows at the same
+   * time are replaced, which keeps late-arriving buffered data at its correct timestamp.
+   */
   private async persist(messages: TelemetryMessage[]) {
-    const ops = [];
-    for (const m of messages) {
-      const ts = Math.floor(parseTs(m.ts) / 300) * 300;
-      if (m.type === "pv") {
-        const data = { dcVoltage: m.metrics.dcVoltage, dcCurrent: m.metrics.dcCurrent, acPowerW: m.metrics.acPowerW, energyWh: (m.metrics.acPowerW * 300) / 3600, panelTempC: m.metrics.panelTempC, inverter: m.status.inverter };
-        ops.push(prisma.solarTelemetry.upsert({ where: { assetId_res_ts: { assetId: m.assetId, res: 5, ts } }, create: { assetId: m.assetId, res: 5, ts, ...data }, update: data }));
-      } else if (m.type === "battery") {
-        const data = { voltage: m.metrics.voltage, currentA: m.metrics.currentA, soc: m.metrics.soc, soh: m.metrics.soh, tempC: m.metrics.tempC, spreadMv: m.metrics.spreadMv, cycles: m.metrics.cycles, bms: m.status.bms };
-        ops.push(prisma.batteryTelemetry.upsert({ where: { assetId_res_ts: { assetId: m.assetId, res: 5, ts } }, create: { assetId: m.assetId, res: 5, ts, ...data }, update: data }));
-      } else {
-        const data = { pvW: m.metrics.pvW, loadW: m.metrics.loadW, plnImportW: m.metrics.plnImportW, chargeW: m.metrics.chargeW, dischargeW: m.metrics.dischargeW, curtailW: m.metrics.curtailW };
-        ops.push(prisma.energyMeterReading.upsert({ where: { scopeId_res_ts: { scopeId: m.assetId, res: 5, ts } }, create: { scopeId: m.assetId, res: 5, ts, ...data }, update: data }));
-      }
-    }
-    await prisma.$transaction(ops);
+    const bucketOf = (m: TelemetryMessage) => Math.floor(parseTs(m.ts) / 300) * 300;
+    const solar = messages.flatMap((m) => (m.type !== "pv" ? [] : [{
+      assetId: m.assetId, res: 5, ts: bucketOf(m), dcVoltage: m.metrics.dcVoltage, dcCurrent: m.metrics.dcCurrent, acPowerW: m.metrics.acPowerW,
+      energyWh: (m.metrics.acPowerW * 300) / 3600, panelTempC: m.metrics.panelTempC, inverter: m.status.inverter,
+    }]));
+    const battery = messages.flatMap((m) => (m.type !== "battery" ? [] : [{
+      assetId: m.assetId, res: 5, ts: bucketOf(m), voltage: m.metrics.voltage, currentA: m.metrics.currentA, soc: m.metrics.soc, soh: m.metrics.soh,
+      tempC: m.metrics.tempC, spreadMv: m.metrics.spreadMv, cycles: m.metrics.cycles, bms: m.status.bms,
+    }]));
+    const meter = messages.flatMap((m) => (m.type !== "meter" ? [] : [{
+      scopeId: m.assetId, res: 5, ts: bucketOf(m), pvW: m.metrics.pvW, loadW: m.metrics.loadW, plnImportW: m.metrics.plnImportW,
+      chargeW: m.metrics.chargeW, dischargeW: m.metrics.dischargeW, curtailW: m.metrics.curtailW,
+    }]));
+    await prisma.$transaction([
+      prisma.solarTelemetry.deleteMany({ where: { res: 5, OR: solar.map((r) => ({ assetId: r.assetId, ts: r.ts })) } }),
+      prisma.solarTelemetry.createMany({ data: solar, skipDuplicates: true }),
+      prisma.batteryTelemetry.deleteMany({ where: { res: 5, OR: battery.map((r) => ({ assetId: r.assetId, ts: r.ts })) } }),
+      prisma.batteryTelemetry.createMany({ data: battery, skipDuplicates: true }),
+      prisma.energyMeterReading.deleteMany({ where: { res: 5, OR: meter.map((r) => ({ scopeId: r.scopeId, ts: r.ts })) } }),
+      prisma.energyMeterReading.createMany({ data: meter, skipDuplicates: true }),
+    ]);
   }
 
   /** Derives statuses and health scores. Status always comes from open alerts plus connectivity. */

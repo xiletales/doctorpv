@@ -86,8 +86,8 @@ export async function buildOverview(zoneParam: string | null): Promise<OverviewD
   const placeholders = zones.map((g) => `'${g}'`).join(",");
   const battDaily = await prisma.$queryRawUnsafe<{ d: number; soc: number; soh: number }[]>(
     `SELECT (t.ts + 25200) / 86400 AS d, AVG(t.soc) AS soc, AVG(t.soh) AS soh
-     FROM BatteryTelemetry t JOIN Battery b ON b.id = t.assetId
-     WHERE t.res = 60 AND t.ts >= ${start30} AND t.ts <= ${now} AND b.zoneId IN (${placeholders}) GROUP BY d ORDER BY d`,
+     FROM "BatteryTelemetry" t JOIN "Battery" b ON b.id = t."assetId"
+     WHERE t.res = 60 AND t.ts >= ${start30} AND t.ts <= ${now} AND b."zoneId" IN (${placeholders}) GROUP BY d ORDER BY d`,
   );
   const [meter30, weather30] = await Promise.all([
     prisma.energyMeterReading.findMany({ where: { scopeId, res: 60, ts: { gte: start30, lte: now } }, select: { ts: true, pvW: true } }),
