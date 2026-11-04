@@ -17,7 +17,8 @@
     "simulate": "tsx simulator/index.ts",
     "demo": "tsx scripts/demo.ts",
     "predev": "node scripts/copy-map-worker.mjs",
-    "prebuild": "node scripts/copy-map-worker.mjs"
+    "prebuild": "node scripts/copy-map-worker.mjs",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.10.1",

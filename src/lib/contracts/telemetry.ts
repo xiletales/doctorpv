@@ -77,6 +77,8 @@ export interface SimDirective {
   inverterH021: boolean;
   batteryB025: boolean;
   gw3Offline: boolean;
+  /** Assets whose fault a completed work order has physically fixed. */
+  repaired: string[];
   /** Increments on reset so the simulator drops its scenario state exactly once. */
   resetEpoch: number;
 }

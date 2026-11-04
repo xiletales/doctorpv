@@ -11,6 +11,7 @@ if (!existsSync(file)) {
   console.log("Menyiapkan database...");
   run("npm run -s db:setup");
 } else {
+  run("npx prisma db push");
   const today = Math.floor((Date.now() / 1000 + 7 * 3600) / 86400);
   let seedDay = 0;
   try {

@@ -1,10 +1,12 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CheckCheck, ChevronDown, Hammer } from "lucide-react";
+import { Check, CheckCheck, ChevronDown, ClipboardPlus, Hammer } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { GangFilter, inputClass, selectClass } from "@/components/domain/asset-parts";
+import { useSessionUser } from "@/components/layout/session-context";
+import { can } from "@/lib/rbac";
 import { DisclaimerNote, EmptyState, ErrorState, PageTitle, PriorityBadge } from "@/components/domain/status";
 import { ConfidenceBar } from "@/components/domain/confidence-bar";
 import { Button } from "@/components/ui/button";
@@ -62,6 +64,23 @@ function Stats({ alerts }: { alerts: AlertDto[] }) {
   );
 }
 
+function CreateOrder({ a }: { a: AlertDto }) {
+  const user = useSessionUser();
+  const qc = useQueryClient();
+  const create = useMutation({
+    mutationFn: () => apiSend("/api/v1/work-orders", "POST", { alertId: a.id }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["alerts"] });
+      void qc.invalidateQueries({ queryKey: ["work-orders"] });
+      toast.success(`Perintah kerja untuk ${a.assetId} dibuat.`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (a.workOrderId) return <Link href="/maintenance" className="inline-flex h-8 items-center text-xs font-medium text-primary hover:underline">Lihat perintah kerja</Link>;
+  if (!can(user.role, "workorders:create") || a.assetType === "gateway") return null;
+  return <Button size="sm" disabled={create.isPending} onClick={() => create.mutate()}><ClipboardPlus className="h-3.5 w-3.5" aria-hidden /> Buat perintah kerja</Button>;
+}
+
 function AlertRow({ a, onChange, busy }: { a: AlertDto; onChange: (id: string, status: "acknowledged" | "in_progress" | "resolved") => void; busy: boolean }) {
   const [open, setOpen] = useState(false);
   const href = assetHref(a);
@@ -85,7 +104,8 @@ function AlertRow({ a, onChange, busy }: { a: AlertDto; onChange: (id: string, s
           </span>
         </button>
         {a.status !== "resolved" ? (
-          <div className="flex flex-wrap gap-1.5 md:justify-end">
+          <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
+            <CreateOrder a={a} />
             {a.status === "open" ? <Button size="sm" disabled={busy} onClick={() => onChange(a.id, "acknowledged")}><Check className="h-3.5 w-3.5" aria-hidden /> Terima</Button> : null}
             {a.status !== "in_progress" ? <Button size="sm" disabled={busy} onClick={() => onChange(a.id, "in_progress")}><Hammer className="h-3.5 w-3.5" aria-hidden /> Tangani</Button> : null}
             <Button size="sm" variant="primary" disabled={busy} onClick={() => onChange(a.id, "resolved")}><CheckCheck className="h-3.5 w-3.5" aria-hidden /> Selesaikan</Button>

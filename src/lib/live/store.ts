@@ -127,7 +127,7 @@ const parseTs = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
 class LiveStore {
   clock: ClockConfig = defaultClock();
-  directive: SimDirective = { clock: this.clock, inverterH021: false, batteryB025: false, gw3Offline: false, resetEpoch: 0 };
+  directive: SimDirective = { clock: this.clock, inverterH021: false, batteryB025: false, gw3Offline: false, repaired: [], resetEpoch: 0 };
   pv = new Map<string, PvLive>();
   batteries = new Map<string, BatteryLive>();
   gangs = new Map<string, GangLive>();
@@ -724,6 +724,19 @@ class LiveStore {
     });
   }
 
+  /** A completed work order fixes the asset in the simulation, so its readings recover on their own. */
+  repair(assetId: string) {
+    return this.enqueue(async () => {
+      this.directive = {
+        ...this.directive,
+        inverterH021: assetId === "H021" ? false : this.directive.inverterH021,
+        batteryB025: assetId === "B025" ? false : this.directive.batteryB025,
+        repaired: [...new Set([...this.directive.repaired, assetId])],
+      };
+      this.scheduleFlush();
+    });
+  }
+
   setClock(clock: ClockConfig) {
     return this.enqueue(async () => {
       this.clock = clock;
@@ -747,7 +760,7 @@ class LiveStore {
   }
 
   private async reset() {
-    this.directive = { clock: this.clock, inverterH021: false, batteryB025: false, gw3Offline: false, resetEpoch: this.directive.resetEpoch + 1 };
+    this.directive = { clock: this.clock, inverterH021: false, batteryB025: false, gw3Offline: false, repaired: [], resetEpoch: this.directive.resetEpoch + 1 };
     await prisma.aiPrediction.deleteMany({ where: { id: { startsWith: "ANM-LIVE-" } } });
     await prisma.alert.deleteMany({ where: { id: { startsWith: "LIVE-" } } });
     await prisma.workOrder.deleteMany({});

@@ -53,10 +53,13 @@ export function withPeers(own: DayRatio[], peersByDay: Map<number, number[]>): D
   }));
 }
 
-/** Baseline PR: the system's own median day, which is robust against fault periods. */
+/**
+ * Baseline PR: the system's own 80th percentile day. A median would learn long degradation
+ * such as soiling as normal, and then under-report the loss and over-report the recovery.
+ */
 export function baselinePr(rows: HourlyPv[], weather: Map<number, HourlyWeather>, capacityKwp: number): number {
-  const ratios = dailyRatios(rows, weather, capacityKwp, 1).map((d) => d.ratio);
-  return ratios.length ? median(ratios) : 0.78;
+  const ratios = dailyRatios(rows, weather, capacityKwp, 1).map((d) => d.ratio).sort((a, b) => a - b);
+  return ratios.length ? ratios[Math.floor((ratios.length - 1) * 0.8)] : 0.78;
 }
 
 export function trendPerDay(days: { day: number; ratio: number }[], window = 14): number {

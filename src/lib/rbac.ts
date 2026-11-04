@@ -3,14 +3,16 @@ import type { Role, SessionUser } from "./types";
 export type Action =
   | "alerts:write"
   | "demo:control"
+  | "workorders:create"
+  | "workorders:update"
   | "owner:viewAll"
   | "owner:viewOwnGang";
 
 const ACTIONS: Record<Role, Action[]> = {
-  dlh: ["alerts:write", "demo:control", "owner:viewAll"],
-  admin_rt: ["alerts:write", "demo:control", "owner:viewAll"],
-  koordinator: ["alerts:write", "owner:viewOwnGang"],
-  teknisi: ["alerts:write"],
+  dlh: ["alerts:write", "demo:control", "owner:viewAll", "workorders:create", "workorders:update"],
+  admin_rt: ["alerts:write", "demo:control", "owner:viewAll", "workorders:create", "workorders:update"],
+  koordinator: ["alerts:write", "owner:viewOwnGang", "workorders:create"],
+  teknisi: ["alerts:write", "workorders:update"],
 };
 
 export function can(role: Role, action: Action): boolean {
@@ -51,7 +53,10 @@ export const NAV: NavItem[] = [
   { href: "/solar", label: "Rumah dan Surya", group: "Pemantauan", icon: "home", roles: ALL },
   { href: "/batteries", label: "Kesehatan Baterai", group: "Pemantauan", icon: "battery", roles: ALL },
   { href: "/ai", label: "Diagnosis AI", group: "Kecerdasan", icon: "brain", roles: ALL },
+  { href: "/energy", label: "Energi Hibrida", group: "Pemantauan", icon: "zap", roles: ALL },
   { href: "/alerts", label: "Pusat Alert", group: "Operasional", icon: "siren", roles: ALL },
+  { href: "/maintenance", label: "Pemeliharaan", group: "Operasional", icon: "wrench", roles: ALL },
+  { href: "/about", label: "Arsitektur Sistem", group: "Sistem", icon: "info", roles: ALL },
   { href: "/demo", label: "Kontrol Demo", group: "Sistem", icon: "sliders", roles: ["dlh", "admin_rt"] },
 ];
 

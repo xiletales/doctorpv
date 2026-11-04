@@ -15,7 +15,7 @@ const B025_STEP = 3;
 const B025_MAX = 34;
 
 const world = buildWorld(envCenter());
-let directive: SimDirective = { clock: defaultClock(), inverterH021: false, batteryB025: false, gw3Offline: false, resetEpoch: 0 };
+let directive: SimDirective = { clock: defaultClock(), inverterH021: false, batteryB025: false, gw3Offline: false, repaired: [], resetEpoch: 0 };
 let seq = Math.floor(Date.now() / 1000);
 let engine: Engine;
 let lastT = 0;
@@ -28,7 +28,7 @@ function faultsFor(day: number): Fault[] {
   const today = dayStart(day);
   const list = defaultFaults(today);
   if (directive.inverterH021) list.push({ kind: "inverter_trip", assetId: "H021", from: today });
-  return list;
+  return list.filter((f) => !directive.repaired.includes(f.assetId));
 }
 
 function warm(t: number) {

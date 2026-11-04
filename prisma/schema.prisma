@@ -194,6 +194,8 @@ model WorkOrder {
   title     String
   assignee  String?
   notes     String?
+  alertId   String?
+  beforeValue Float?
   createdAt Int
   completedAt Int?
 }
