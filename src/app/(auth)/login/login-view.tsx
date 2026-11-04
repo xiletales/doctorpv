@@ -2,13 +2,16 @@
 import { Activity, BatteryCharging, BrainCircuit, Loader2, MapPinned, Wrench } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { LogoMark } from "@/components/domain/logo";
 import { PulseLine } from "@/components/domain/pulse-score";
+import dynamic from "next/dynamic";
 import { ClusterIsometric } from "@/components/illustrations/cluster-isometric";
 import { Button } from "@/components/ui/button";
 import { PROJECT_TITLE, SITE } from "@/lib/site";
 import { ROLE_LABEL, type AssetStatus, type Role } from "@/lib/types";
+
+const LoginFlyover = dynamic(() => import("@/components/illustrations/login-flyover").then((m) => m.LoginFlyover), { ssr: false });
 
 const DEMO: { email: string; role: Role; scope: string }[] = [
   { email: "dlh@sunpulse.id", role: "dlh", scope: "Seluruh data dan kontrol demo" },
@@ -33,6 +36,12 @@ export function LoginView({ demo }: { demo: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // The 3D flyover needs WebGL 2. Otherwise, and until this is known, nothing heavy loads.
+  const [webgl, setWebgl] = useState<boolean | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWebgl(Boolean(document.createElement("canvas").getContext("webgl2")));
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   const login = async (mail: string, pass: string) => {
@@ -57,9 +66,12 @@ export function LoginView({ demo }: { demo: boolean }) {
 
   return (
     <div className="dark relative min-h-dvh overflow-hidden bg-[#070b14] text-white">
+      {webgl ? <LoginFlyover className="absolute inset-0 hidden lg:block" /> : null}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-gradient-to-b from-[#070b14] via-[#070b14]/70 to-transparent" aria-hidden />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-t from-[#070b14] via-[#070b14]/70 to-transparent" aria-hidden />
       <div className="aurora" aria-hidden />
       <div className="relative mx-auto grid min-h-dvh max-w-[1500px] gap-6 p-6 lg:grid-cols-[1fr_400px] lg:gap-10 lg:p-10">
-        <main className="flex min-w-0 flex-col justify-between gap-6">
+        <main className="flex min-w-0 flex-col gap-6">
           <header className="flex items-center gap-3">
             <LogoMark className="h-10 w-10" />
             <div>
@@ -68,14 +80,14 @@ export function LoginView({ demo }: { demo: boolean }) {
             </div>
           </header>
           <div>
-            <h1 className="display max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl xl:text-6xl">Denyut energi klaster permukiman Anda.</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
+            <h1 className="display max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl">Denyut energi klaster permukiman Anda.</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300">
               {PROJECT_TITLE}
             </p>
-            <PulseLine bpm={72} color="#FBBF24" className="mt-4 h-8 w-64" />
+            <PulseLine bpm={72} color="#FBBF24" className="mt-3 h-7 w-56" />
           </div>
-          <ClusterIsometric statuses={HERO_STATUS} className="mx-auto hidden max-h-[48vh] w-full lg:block" />
-          <ul className="grid gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-5">
+          {webgl === false ? <ClusterIsometric statuses={HERO_STATUS} className="mx-auto hidden max-h-[48vh] w-full lg:block" /> : null}
+          <ul className="mt-auto grid gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-5">
             {FEATURES.map((f) => (
               <li key={f.title}>
                 <p className="flex items-center gap-1.5 text-sm font-semibold"><f.icon className="h-4 w-4 text-amber-300" aria-hidden /> {f.title}</p>

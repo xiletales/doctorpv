@@ -259,7 +259,12 @@ function Hero({ timeline, index, setIndex }: { timeline?: TimelineDto; index: nu
             ))}
           </div>
           <div className="flex flex-1 items-center justify-center">
-            {view === "flow" ? <EnergyFlow v={flow} /> : <ClusterIsometric statuses={statuses} hour={hourOfDay(ts)} onSelect={select} className="max-h-80 w-full" />}
+            {view === "flow" ? <EnergyFlow v={flow} /> : (
+              <div className="w-full">
+                <ClusterIsometric statuses={statuses} hour={hourOfDay(ts)} onSelect={select} className="max-h-72 w-full" />
+                <Link href="/map" className="mt-1 block text-center text-xs font-medium text-amber-300 hover:underline">Buka peta 3D RW 1</Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

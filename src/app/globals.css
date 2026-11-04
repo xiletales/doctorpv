@@ -219,6 +219,27 @@ body {
   filter: blur(14px);
 }
 
+/* Cloudy mode: a slow grey veil over the map. Transform only, and it stops under reduced motion. */
+.cloud-veil {
+  background:
+    radial-gradient(40% 30% at 25% 30%, rgba(203, 213, 225, 0.32), transparent),
+    radial-gradient(45% 35% at 70% 22%, rgba(148, 163, 184, 0.36), transparent),
+    radial-gradient(50% 40% at 50% 70%, rgba(100, 116, 139, 0.28), transparent),
+    rgba(71, 85, 105, 0.16);
+}
+.cloud-drift {
+  animation: cloud-drift 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes cloud-drift {
+  from {
+    transform: translate3d(-3%, 0, 0) scale(1.08);
+  }
+  to {
+    transform: translate3d(3%, 1%, 0) scale(1.08);
+  }
+}
+
 .time-slider {
   appearance: none;
   height: 6px;
@@ -281,6 +302,7 @@ body {
   .pulse-ring,
   .live-dot,
   .ecg-trace,
+  .cloud-drift,
   .pulse-halo,
   .aurora::before,
   .aurora::after {
