@@ -9,13 +9,14 @@ import type { AlertDto } from "./dto";
 
 export async function listAlerts(
   user: SessionUser,
-  opts: { active?: boolean; gangId?: string | null; limit?: number } = {},
+  opts: { active?: boolean; gangId?: string | null; assetId?: string | null; limit?: number } = {},
 ): Promise<AlertDto[]> {
   const scope = gangScope(user);
   const gangs = opts.gangId ? (scope === null || scope.includes(opts.gangId) ? [opts.gangId] : []) : scope;
   const rows = await prisma.alert.findMany({
     where: {
       ...(opts.active ? { status: { not: "resolved" } } : {}),
+      ...(opts.assetId ? { assetId: opts.assetId } : {}),
       ...(gangs ? { gangId: { in: gangs } } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],

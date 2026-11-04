@@ -12,10 +12,12 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
+    "db:setup": "node scripts/ensure-env.mjs && prisma generate && prisma db push && tsx prisma/seed.ts",
     "seed": "tsx prisma/seed.ts",
     "simulate": "tsx simulator/index.ts",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "predev": "node scripts/copy-map-worker.mjs",
+    "prebuild": "node scripts/copy-map-worker.mjs"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.10.1",
@@ -51,6 +53,7 @@
     "@tailwindcss/postcss": "^4.3.4",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^9.6.0",
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -39,6 +39,8 @@ const fullFmt = new Intl.DateTimeFormat("id-ID", {
   hour12: false,
 });
 
+const longFmt = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "long", year: "numeric" });
+export const longDate = (ts: number): string => longFmt.format(ts * 1000);
 export const clockTime = (ts: number): string => timeFmt.format(ts * 1000);
 export const shortDate = (ts: number): string => dateFmt.format(ts * 1000);
 export const dateTime = (ts: number): string => `${fullFmt.format(ts * 1000)} WIB`;

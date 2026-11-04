@@ -8,6 +8,7 @@ export const GET = route(async (req: Request) => {
   const alerts = await listAlerts(user, {
     active: url.searchParams.get("active") === "true",
     gangId: url.searchParams.get("gangId"),
+    assetId: url.searchParams.get("assetId"),
     limit: Math.min(Number(url.searchParams.get("limit") ?? 200) || 200, 500),
   });
   return NextResponse.json({ alerts });
