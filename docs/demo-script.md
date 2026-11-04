@@ -3,7 +3,8 @@
 **Persiapan**
 - Jalankan `nvm use && npm run demo`, lalu buka http://localhost:3000.
 - Masuk sebagai Super Admin DLH. Pastikan penanda waktu menunjukkan 10.15 WIB dan garis denyut "Langsung" bergerak.
-- Jika Wi-Fi tempat acara bermasalah, peta tetap memakai tampilan Skematik. Aplikasi ini tidak membutuhkan internet.
+- Aplikasi membutuhkan internet untuk login dan data. Uji koneksi di lokasi, dan siapkan hotspot ponsel.
+- Buka dashboard Supabase sehari sebelumnya, karena project free tier berhenti setelah 1 minggu tanpa aktivitas.
 
 | Menit | Halaman | Lakukan | Sampaikan |
 |---|---|---|---|
@@ -32,4 +33,4 @@
 **Bila ada masalah**
 - Penanda "Simulator tidak berjalan": jalankan `npm run simulate` di terminal kedua.
 - Banner "Data simulasi berasal dari hari lain": hentikan aplikasi, lalu jalankan `npm run demo`.
-- Siapkan video rekaman demo sebagai cadangan terakhir.
+- Internet gagal total: pakai versi SQLite di branch `sunpulse`, yang berjalan tanpa internet, atau video rekaman demo sebagai cadangan terakhir.

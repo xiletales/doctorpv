@@ -1,6 +1,5 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import Database from "better-sqlite3";
 import { detectBatteryAnomalies, detectPvAnomalies, type Anomaly, type BatteryDaily } from "../src/lib/ai/anomaly";
 import { baselinePr, dailyRatios, withPeers, type HourlyWeather } from "../src/lib/ai/features";
 import { expectedPowerW } from "../src/lib/ai/expected";
@@ -12,12 +11,16 @@ import { Engine, type WorldSample } from "../src/lib/sim/engine";
 import { activeFaults, defaultFaults, indexFaults } from "../src/lib/sim/faults";
 import { dayStart, DAY, defaultClock, simNow, wibDay } from "../src/lib/sim/time";
 import { buildWorld, envCenter } from "../src/lib/sim/world";
+import type { Prisma } from "../src/generated/prisma/client";
+import { createPrisma } from "../src/lib/prisma-factory";
+
+const BATCH_SIZE = 1000;
+const WRITE_CONCURRENCY = 4;
+const SIZE_LIMIT_MB = 400;
 
 const started = Date.now();
-const file = (process.env.DATABASE_URL ?? "file:./data/sunpulse.db").replace(/^file:/, "");
-const db = new Database(file);
-db.pragma("journal_mode = WAL");
-db.pragma("synchronous = OFF");
+// Bulk writes use the session pooler. They run after all rows are computed in memory.
+const db = createPrisma(process.env.DIRECT_URL ?? "", WRITE_CONCURRENCY);
 
 const realNow = Math.floor(Date.now() / 1000);
 const demoDay = wibDay(realNow);
@@ -30,22 +33,27 @@ const engine = new Engine({ world, faults, refDayStart: today, demoDay });
 const houseById = new Map(world.houses.map((h) => [h.id, h]));
 const battById = new Map(world.batteries.map((b) => [b.id, b]));
 
-db.exec(`
-  DELETE FROM User; DELETE FROM Cluster; DELETE FROM SolarSystem; DELETE FROM House; DELETE FROM Battery;
-  DELETE FROM Gateway; DELETE FROM Zone; DELETE FROM SolarTelemetry; DELETE FROM BatteryTelemetry;
-  DELETE FROM EnergyMeterReading; DELETE FROM WeatherReading; DELETE FROM AiPrediction; DELETE FROM Alert;
-  DELETE FROM WorkOrder; DELETE FROM AuditLog; DELETE FROM Setting;
-`);
-
 const hash = bcrypt.hashSync("demo1234", 10);
-const insZone = db.prepare("INSERT INTO Zone (id,name,code,boundaryGeoJson,roadGeoJson) VALUES (?,?,?,?,?)");
-const insUser = db.prepare("INSERT INTO User (id,name,email,passwordHash,role,active,createdAt,houseId) VALUES (?,?,?,?,?,1,?,?)");
-const insSolarT = db.prepare("INSERT INTO SolarTelemetry (assetId,res,ts,dcVoltage,dcCurrent,acPowerW,energyWh,panelTempC,inverter,quality) VALUES (?,?,?,?,?,?,?,?,?,0)");
-const insBattT = db.prepare("INSERT INTO BatteryTelemetry (assetId,res,ts,voltage,currentA,soc,soh,tempC,spreadMv,cycles,bms,quality) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)");
-const insMeter = db.prepare("INSERT INTO EnergyMeterReading (scopeId,res,ts,pvW,loadW,plnImportW,chargeW,dischargeW,curtailW) VALUES (?,?,?,?,?,?,?,?,?)");
-const insWeather = db.prepare("INSERT INTO WeatherReading (res,ts,irradiance,ambientC,cloudCover) VALUES (?,?,?,?,?)");
-const insPred = db.prepare("INSERT INTO AiPrediction (id,assetType,assetId,zoneId,kind,payloadJson,confidence,modelVersion,alertId,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)");
-const insAlert = db.prepare("INSERT INTO Alert (id,assetType,assetId,zoneId,type,priority,message,recommendedAction,status,createdAt,acknowledgedBy,acknowledgedAt,resolvedAt,workOrderId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)");
+const rows = {
+  zone: [] as Prisma.ZoneCreateManyInput[],
+  user: [] as Prisma.UserCreateManyInput[],
+  house: [] as Prisma.HouseCreateManyInput[],
+  solar: [] as Prisma.SolarSystemCreateManyInput[],
+  battery: [] as Prisma.BatteryCreateManyInput[],
+  gateway: [] as Prisma.GatewayCreateManyInput[],
+  solarT: [] as Prisma.SolarTelemetryCreateManyInput[],
+  batteryT: [] as Prisma.BatteryTelemetryCreateManyInput[],
+  meter: [] as Prisma.EnergyMeterReadingCreateManyInput[],
+  weather: [] as Prisma.WeatherReadingCreateManyInput[],
+  prediction: [] as Prisma.AiPredictionCreateManyInput[],
+  alert: [] as Prisma.AlertCreateManyInput[],
+};
+const insSolarT = { run: (assetId: string, res: number, ts: number, dcVoltage: number, dcCurrent: number, acPowerW: number, energyWh: number, panelTempC: number, inverter: string) => rows.solarT.push({ assetId, res, ts, dcVoltage, dcCurrent, acPowerW, energyWh, panelTempC, inverter }) };
+const insBattT = { run: (assetId: string, res: number, ts: number, voltage: number, currentA: number, soc: number, soh: number, tempC: number, spreadMv: number, cycles: number, bms: string) => rows.batteryT.push({ assetId, res, ts, voltage, currentA, soc, soh, tempC, spreadMv, cycles, bms }) };
+const insMeter = { run: (scopeId: string, res: number, ts: number, pvW: number, loadW: number, plnImportW: number, chargeW: number, dischargeW: number, curtailW: number) => rows.meter.push({ scopeId, res, ts, pvW, loadW, plnImportW, chargeW, dischargeW, curtailW }) };
+const insWeather = { run: (res: number, ts: number, irradiance: number, ambientC: number, cloudCover: number) => rows.weather.push({ res, ts, irradiance, ambientC, cloudCover }) };
+const insPred = { run: (id: string, assetType: string, assetId: string, zoneId: string, kind: string, payloadJson: string, confidence: number, modelVersion: string, alertId: string | null, createdAt: number) => rows.prediction.push({ id, assetType, assetId, zoneId, kind, payloadJson, confidence, modelVersion, alertId, createdAt: Math.round(createdAt) }) };
+const insAlert = { run: (id: string, assetType: string, assetId: string, zoneId: string, type: string, priority: string, message: string, recommendedAction: string, status: string, createdAt: number, acknowledgedBy: string | null, acknowledgedAt: number | null, resolvedAt: number | null) => rows.alert.push({ id, assetType, assetId, zoneId, type, priority, message, recommendedAction, status, createdAt: Math.round(createdAt), acknowledgedBy, acknowledgedAt: acknowledgedAt === null ? null : Math.round(acknowledgedAt), resolvedAt: resolvedAt === null ? null : Math.round(resolvedAt) }) };
 
 // Hourly accumulators, flushed on each hour boundary.
 interface Acc { n: number; a: number; b: number; c: number; d: number; e: number; f: number; last: string }
@@ -94,7 +102,7 @@ const fiveMinFrom = today - DAY;
 const snapTs = Math.floor(nowTs / 300) * 300;
 
 engine.warmUp(start - 5 * DAY, start);
-const seedTelemetry = db.transaction(() => {
+function seedTelemetry() {
   let hour = start;
   for (let t = start; t < end; t += 300) {
     if (t >= hour + 3600) {
@@ -144,33 +152,30 @@ const seedTelemetry = db.transaction(() => {
     addG("CLUSTER", rt);
   }
   flushHour(hour);
-});
+}
 
 // Baseline PR must exist before registry rows are written.
 const baselines = new Map<string, number>();
-const seedStatic = db.transaction(() => {
+let cluster: { id: string; name: string; boundaryGeoJson: string } | null = null;
+function seedStatic() {
   for (const g of world.zones) {
-    insZone.run(g.id, g.name, g.code, JSON.stringify(g.boundary), JSON.stringify({ road: g.road, label: [g.labelLng, g.labelLat] }));
+    rows.zone.push({ id: g.id, name: g.name, code: g.code, boundaryGeoJson: JSON.stringify(g.boundary), roadGeoJson: JSON.stringify({ road: g.road, label: [g.labelLng, g.labelLat] }) });
   }
-  db.prepare("INSERT INTO Cluster (id,name,boundaryGeoJson) VALUES (?,?,?)").run("KLASTER-1", "Klaster Permukiman", JSON.stringify(world.boundary));
+  cluster = { id: "KLASTER-1", name: "Klaster Permukiman", boundaryGeoJson: JSON.stringify(world.boundary) };
   const owner = world.houses[0];
-  insUser.run("U-DLH", "Ratna Wibowo", "dlh@sunpulse.id", hash, "dlh", realNow, null);
-  insUser.run("U-ADM", "Agus Santoso", "admin@sunpulse.id", hash, "admin", realNow, null);
-  insUser.run("U-T1", "Budi Hartono", "teknisi1@sunpulse.id", hash, "teknisi", realNow, null);
-  insUser.run("U-W1", owner.ownerName, "warga.h01@sunpulse.id", hash, "warga", realNow, owner.id);
+  const user = (id: string, name: string, email: string, role: string, houseId: string | null) => rows.user.push({ id, name, email, passwordHash: hash, role, active: true, createdAt: realNow, houseId });
+  user("U-DLH", "Ratna Wibowo", "dlh@sunpulse.id", "dlh", null);
+  user("U-ADM", "Agus Santoso", "admin@sunpulse.id", "admin", null);
+  user("U-T1", "Budi Hartono", "teknisi1@sunpulse.id", "teknisi", null);
+  user("U-W1", owner.ownerName, "warga.h01@sunpulse.id", "warga", owner.id);
 
-  const insHouse = db.prepare("INSERT INTO House (id,zoneId,ownerCode,ownerName,address,lat,lng,batteryId,gatewayId) VALUES (?,?,?,?,?,?,?,?,?)");
-  const insSolar = db.prepare("INSERT INTO SolarSystem (id,houseId,capacityKwp,panelCount,inverterModel,tilt,azimuth,installDate,lat,lng,baselinePr,registryStatus) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
   for (const h of world.houses) {
-    insHouse.run(h.id, h.zoneId, h.ownerCode, h.ownerName, h.address, h.lat, h.lng, h.batteryId, h.gatewayId);
-    insSolar.run(`PV-${h.id}`, h.id, h.capacityKwp, h.panelCount, h.inverterModel, h.tilt, h.azimuth, today - h.ageDays * DAY, h.pvLat, h.pvLng, baselines.get(h.id) ?? h.pr, h.registryStatus);
+    rows.house.push({ id: h.id, zoneId: h.zoneId, ownerCode: h.ownerCode, ownerName: h.ownerName, address: h.address, lat: h.lat, lng: h.lng, batteryId: h.batteryId, gatewayId: h.gatewayId });
+    rows.solar.push({ id: `PV-${h.id}`, houseId: h.id, capacityKwp: h.capacityKwp, panelCount: h.panelCount, inverterModel: h.inverterModel, tilt: h.tilt, azimuth: h.azimuth, installDate: today - h.ageDays * DAY, lat: h.pvLat, lng: h.pvLng, baselinePr: baselines.get(h.id) ?? h.pr, registryStatus: h.registryStatus });
   }
-  const insBatt = db.prepare("INSERT INTO Battery (id,zoneId,chemistry,nominalCapacityKwh,nominalVoltage,installDate,lat,lng) VALUES (?,?,'LiFePO4',?,?,?,?,?)");
-  for (const b of world.batteries) insBatt.run(b.id, b.zoneId, b.capacityKwh, b.nominalV, today - b.ageDays * DAY, b.lat, b.lng);
-  const insGw = db.prepare("INSERT INTO Gateway (id,zoneId,firmware,lat,lng) VALUES (?,?,?,?,?)");
-  for (const g of world.gateways) insGw.run(g.id, g.zoneId, g.firmware, g.lat, g.lng);
-  db.prepare("INSERT INTO Setting (key,valueJson) VALUES ('seedDay',?)").run(String(demoDay));
-});
+  for (const b of world.batteries) rows.battery.push({ id: b.id, zoneId: b.zoneId, chemistry: "LiFePO4", nominalCapacityKwh: b.capacityKwh, nominalVoltage: b.nominalV, installDate: today - b.ageDays * DAY, lat: b.lat, lng: b.lng });
+  for (const g of world.gateways) rows.gateway.push({ id: g.id, zoneId: g.zoneId, firmware: g.firmware, lat: g.lat, lng: g.lng });
+}
 
 seedTelemetry();
 
@@ -256,7 +261,7 @@ const TYPE_BY_CAUSE: Record<string, AlertType> = {
   aging: "soh_degradation",
 };
 
-const seedAlerts = db.transaction(() => {
+function seedAlerts() {
   // Open alerts come from the live rules at the seeded instant, so the live engine finds them already open.
   const sample = snapshot;
   const open = new Map<string, { assetType: "pv" | "battery"; zoneId: string; condition: Condition; from: number }>();
@@ -370,16 +375,66 @@ const seedAlerts = db.transaction(() => {
     insPred.run(`ANM-${String(pn).padStart(3, "0")}`, a.assetType, assetId, a.zoneId, "anomaly", JSON.stringify(payload), diagnosis?.confidence ?? 0.5, MODEL_VERSION, openIds.get(key) ?? null, a.from);
   }
   return { open: [...open.keys()], anomalies: pn };
-});
+}
 
 const result = seedAlerts();
-db.pragma("wal_checkpoint(TRUNCATE)");
-const count = (t: string) => (db.prepare(`SELECT count(*) c FROM ${t}`).get() as { c: number }).c;
-console.log(`Seeded in ${((Date.now() - started) / 1000).toFixed(1)}s:`, {
-  solar: count("SolarTelemetry"),
-  battery: count("BatteryTelemetry"),
-  meter: count("EnergyMeterReading"),
-  anomalies: result.anomalies,
-  openAlerts: result.open,
+
+/** Inserts in fixed-size batches, with a few running at once. */
+async function writeBatches<T>(label: string, data: T[], write: (batch: T[]) => Promise<unknown>) {
+  const batches: T[][] = [];
+  for (let i = 0; i < data.length; i += BATCH_SIZE) batches.push(data.slice(i, i + BATCH_SIZE));
+  let next = 0;
+  const worker = async () => {
+    while (next < batches.length) {
+      const batch = batches[next];
+      next += 1;
+      await write(batch);
+    }
+  };
+  await Promise.all(Array.from({ length: WRITE_CONCURRENCY }, worker));
+  console.log(`  ${label}: ${data.length} baris`);
+}
+
+async function main() {
+  // seedDay is deleted first and written last. A run that stops midway is therefore detected and repeated.
+  await db.setting.deleteMany();
+  await db.$transaction([
+    db.solarSystem.deleteMany(), db.house.deleteMany(), db.battery.deleteMany(), db.gateway.deleteMany(), db.zone.deleteMany(),
+    db.user.deleteMany(), db.cluster.deleteMany(), db.aiPrediction.deleteMany(), db.alert.deleteMany(), db.workOrder.deleteMany(), db.auditLog.deleteMany(),
+    db.solarTelemetry.deleteMany(), db.batteryTelemetry.deleteMany(), db.energyMeterReading.deleteMany(), db.weatherReading.deleteMany(),
+  ]);
+  if (cluster) await db.cluster.create({ data: cluster });
+  await db.zone.createMany({ data: rows.zone });
+  await db.user.createMany({ data: rows.user });
+  await db.house.createMany({ data: rows.house });
+  await db.solarSystem.createMany({ data: rows.solar });
+  await db.battery.createMany({ data: rows.battery });
+  await db.gateway.createMany({ data: rows.gateway });
+  await db.alert.createMany({ data: rows.alert });
+  await db.aiPrediction.createMany({ data: rows.prediction });
+  await writeBatches("Cuaca", rows.weather, (data) => db.weatherReading.createMany({ data }));
+  await writeBatches("Meter", rows.meter, (data) => db.energyMeterReading.createMany({ data }));
+  await writeBatches("Baterai", rows.batteryT, (data) => db.batteryTelemetry.createMany({ data }));
+  await writeBatches("PLTS", rows.solarT, (data) => db.solarTelemetry.createMany({ data }));
+  await db.setting.create({ data: { key: "seedDay", valueJson: String(demoDay) } });
+
+  const [{ mb }] = await db.$queryRaw<{ mb: number }[]>`SELECT (pg_database_size(current_database()) / 1048576)::int AS mb`;
+  console.log(`Selesai dalam ${((Date.now() - started) / 1000).toFixed(1)} dtk. Ukuran database ${mb} MB.`, {
+    solar: rows.solarT.length,
+    battery: rows.batteryT.length,
+    meter: rows.meter.length,
+    weather: rows.weather.length,
+    anomalies: result.anomalies,
+    openAlerts: result.open,
+  });
+  await db.$disconnect();
+  if (mb > SIZE_LIMIT_MB) {
+    console.error(`Ukuran database ${mb} MB melewati batas aman ${SIZE_LIMIT_MB} MB (kuota free tier 500 MB).`);
+    process.exit(1);
+  }
+}
+
+main().catch((err: unknown) => {
+  console.error("Seed gagal:", err instanceof Error ? err.message : "kesalahan tidak dikenal");
+  process.exit(1);
 });
-db.close();
